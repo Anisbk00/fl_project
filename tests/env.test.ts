@@ -5,7 +5,7 @@ import { getServerEnv, hasSupabaseServerConfig } from "@/lib/env/server";
 describe("public environment", () => {
   it("provides safe development defaults when NEXT_PUBLIC_* unset", () => {
     expect(publicEnv.NEXT_PUBLIC_SITE_URL).toBe("http://localhost:3000");
-    expect(publicEnv.NEXT_PUBLIC_SITE_NAME).toBe("Music Project Store");
+    expect(publicEnv.NEXT_PUBLIC_SITE_NAME).toBe("Audio Project Store");
   });
 
   it("is frozen so callers cannot mutate configuration", () => {

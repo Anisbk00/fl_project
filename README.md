@@ -114,6 +114,24 @@ a deployment guide until Step 9 lands.
   that runs automatically once a project is linked, and by the pgTAP suite in
   `supabase/tests/` (run with `supabase db test`).
 
+## Storefront routes (Step 2)
+
+The shell renders these public routes (all are presentation shells; live catalog
+data, checkout, and delivery arrive in later steps):
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Complete home page (hero, trust strip, product-type discovery, featured, transparency, originality, free teaser, FAQ preview) |
+| `/catalog` | Catalog shell using typed fixtures (no non-working filter widgets) |
+| `/free` | Free-download discovery shell (no fake download action) |
+| `/cart` | Polished empty-cart state only |
+| `/about` | Mission + originality statement |
+| `/faq` | Buyer questions (file types, compatibility, licensing, delivery) |
+| `/contact` | Support guidance (placeholder address; no non-functional form) |
+| `/legal/{license,refunds,privacy,terms}` | Draft legal structure pages (`noindex` until approved) |
+| `not-found` | Branded 404 |
+| `error` / `loading` | Route-level error boundary + global loading skeleton |
+
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — end-state topology, data
@@ -121,7 +139,11 @@ a deployment guide until Step 9 lands.
 - [`docs/SECURITY.md`](./docs/SECURITY.md) — assets, actors, trust boundaries,
   threats, controls, secret handling, RLS rules, future payment/download
   requirements.
-- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — Steps 2–9, all explicitly unimplemented.
+- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — Steps 2–9 (Step 2 complete; 3–9 pending).
+- [`docs/DESIGN_SYSTEM.md`](./docs/DESIGN_SYSTEM.md) — Step 2 visual principles,
+  palette/tokens, typography, components, state behavior, responsive & a11y rules.
+- [`docs/CONTENT_GUIDE.md`](./docs/CONTENT_GUIDE.md) — Step 2 voice, terminology,
+  product naming, prohibited claims, third-party DAW reference rules.
 - [`docs/DECISIONS.md`](./docs/DECISIONS.md) — decision record (hosted Stripe
   Checkout, guest checkout, private Supabase delivery storage, webhook-authoritative
   fulfillment).

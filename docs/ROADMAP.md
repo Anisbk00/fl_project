@@ -1,17 +1,40 @@
 # Roadmap
 
-This roadmap lists Steps 2–9. **All of them are explicitly UNIMPLEMENTED in
-Step 1.** Step 1 delivered only the foundation, architecture, and secure
-catalog data layer.
+This roadmap lists Steps 2–9. **Step 2 is COMPLETE; Steps 3–9 remain
+explicitly UNIMPLEMENTED.** Step 1 delivered the foundation, architecture, and
+secure catalog data layer; Step 2 delivered the original brand system and
+responsive storefront shell.
 
-## Step 2 — Brand system and responsive storefront shell *(unimplemented)*
+## Step 2 — Brand system and responsive storefront shell ✅ COMPLETE
 
-Establish the original visual direction (do not copy FLP Studio's design),
-responsive navigation, home-page information architecture, footer/trust
-navigation, accessible component primitives, loading/error/empty states, and
-performance budgets.
+Established the original visual direction (dark graphite + chartreuse,
+independent of FLP Studio's design), responsive navigation, home-page
+information architecture, footer/trust navigation, accessible component
+primitives, loading/error/empty states, and performance budgets.
 
-**Not started.**
+**Implemented:**
+- Original dark-graphite design system with semantic tokens (`docs/DESIGN_SYSTEM.md`).
+- Original SVG brand mark, favicon, and OG image (no copied assets).
+- Two self-hosted font families via `next/font` (Geist Sans + Geist Mono).
+- Component layer (`src/components/site/*`): header, mobile nav, footer,
+  container/section/grid, button/icon-button, badge, price, product card,
+  product artwork, section heading, empty/error/skeleton, skip link, page header/prose.
+- Typed view-model + deterministic fictional fixtures (`src/features/catalog/fixtures`).
+- Routes: `/`, `/catalog`, `/free`, `/cart`, `/about`, `/faq`, `/contact`,
+  `/legal/{license,refunds,privacy,terms}`, branded `not-found`, route-level
+  `error`, global `loading`.
+- Honest global metadata (title template, OG/Twitter, `metadataBase`, favicon);
+  `noindex` on draft legal pages.
+- Accessibility: skip link, landmarks, focus-visible, mobile-menu focus trap +
+  Escape + focus return, WCAG 2.2 AA (axe-core scan: 0 violations on `/`,
+  `/catalog`, `/cart`, `/about`, and the open mobile menu).
+- Responsive: verified 320–1920 px, no horizontal overflow at 320.
+- No fake interactivity (no player/checkout/download/email/review/filter/admin).
+- Tests: price formatting (USD/EUR/JPY/GBP), view-model helpers, fixtures
+  integrity, nav destinations + link resolution; bun test 55 pass / 4 skip / 0 fail.
+
+**Review artifacts:** `review-home-375.png`, `review-home-768.png`,
+`review-home-1440.png`, `review-mobile-menu-open.png`.
 
 ## Step 3 — Catalog, product pages, filters, SEO, and audio previews *(unimplemented)*
 

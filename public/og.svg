@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Audio Project Store — original DAW projects, stems, and sample packs">
+  <rect width="1200" height="630" fill="#171820"/>
+  <rect x="1" y="1" width="1198" height="628" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+  <g fill="#d6f23c" transform="translate(140 215)">
+    <rect x="0" y="80" width="22" height="80" rx="6"/>
+    <rect x="40" y="40" width="22" height="160" rx="6"/>
+    <rect x="80" y="0" width="22" height="240" rx="6"/>
+    <rect x="120" y="30" width="22" height="170" rx="6"/>
+    <rect x="160" y="70" width="22" height="90" rx="6"/>
+  </g>
+  <text x="360" y="290" fill="#f4f1e9" font-family="Inter, system-ui, sans-serif" font-size="68" font-weight="700" letter-spacing="-2">Audio Project Store</text>
+  <text x="362" y="335" fill="#a8a8b0" font-family="Inter, system-ui, sans-serif" font-size="26" font-weight="500">Original DAW projects, stems &amp; sample packs</text>
+  <text x="362" y="430" fill="#6f6f78" font-family="Inter, system-ui, sans-serif" font-size="20" font-weight="500">Working label · Storefront shell in progress</text>
+</svg>

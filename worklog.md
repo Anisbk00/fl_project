@@ -46,3 +46,28 @@ Stage Summary:
 - Prisma/local DB fully removed. Supabase is the only data platform. lint ✓, typecheck ✓, tests 36 pass / 4 skip / 0 fail. Dev server boots clean; agent-browser confirmed `/` renders, correct title, one H1, no console/runtime errors, security headers present, page copy is Supabase-only.
 - Honest blocker: Supabase migrations/pgTAP/gated JS RLS suite require a linked Supabase project (Supabase CLI + Docker) — not available in this sandbox; committed SQL + pgTAP + gated suite are ready to run once linked.
 - Still Step 1 only; no Step 2+ feature implemented. Recommended next prompt title unchanged: "Step 2 — Brand system and responsive storefront shell".
+
+---
+Task ID: 3
+Agent: Z.ai Code (main)
+Task: Step 2 — Original Brand System and Responsive Storefront Shell (per the 19 Sept 2026 master plan Step 2 prompt).
+
+Work Log:
+- Preflight: confirmed Step 1 still green (lint, typecheck, 36 pass/4 skip/0 fail).
+- Design system (src/app/globals.css): dark graphite canvas + warm off-white ink + chartreuse accent + sparing violet technical accent; semantic CSS tokens mapped onto shadcn aliases so all primitives inherit; typography roles (.t-display … .t-technical), container/spacing/radii/shadow/z-index/motion tokens; reduced-motion + custom scrollbar + selection; :root dark-first, .light variant.
+- Brand: original SVG waveform/routing brand mark (BrandMark), favicon (public/icon.svg), OG image (public/og.svg) — all locally authored, no copied assets. Working label "Audio Project Store" (env-configurable, documented).
+- Fonts: Geist Sans + Geist Mono via next/font (self-hosted, ≤2 families).
+- Components (src/components/site/*): Container/Section/Stack/Grid; Button/LinkButton/IconButton (cva variants, hover/active/focus-visible/disabled/loading); Badge; Price (Intl.NumberFormat from minor units, tested); ProductCard (single-anchor, no nested interactive); ProductArtwork (deterministic SVG, stable 4:3); SectionHeading; EmptyState/ErrorState/NoResultsState/SkeletonGrid; SkipLink; PageHeader/Prose; MobileNav (client, Radix Sheet: focus trap/Escape/focus return); SiteHeader (RSC) + SiteFooter; LegalDraft (noindex).
+- View-model + fixtures (src/features/catalog): typed ProductCardVM seam; deterministic fictional fixtures (no artist/label names, original abstract covers); never inserted into Supabase; href → /catalog (detail pages arrive Step 3).
+- Routes: /, /catalog, /free, /cart, /about, /faq, /contact, /legal/{license,refunds,privacy,terms}; branded not-found; route-level error.tsx (client); global loading.tsx. Honest metadata (title template, metadataBase, OG/Twitter, favicon); noindex on legal drafts. (Fixed: /catalog page had not been written after dir creation → created it; now 200.)
+- Tests (bun): price formatting (USD/EUR/JPY/GBP + invalid), view-models (formatBytes/formatDuration/labels), fixtures integrity (deterministic, valid types, integer money, known routes, no banned tokens), nav destinations + link resolution + no sign-in/account link. 55 pass / 4 skip / 0 fail.
+- Agent-browser verification: all 11 routes 200 (+ fake route 404 → branded not-found); no hydration/runtime errors on any core route; 320px has NO horizontal overflow; skip link reveals instantly on focus (top:8, visible, focused); H1 count 1, landmarks present; mobile menu opens (7 links), Escape closes, focus returns to trigger; axe-core scans = 0 violations on /, /catalog, /cart, /about, open mobile menu.
+- Docs: docs/DESIGN_SYSTEM.md, docs/CONTENT_GUIDE.md; updated docs/ROADMAP.md (Step 2 COMPLETE, 3–9 pending); README Step 2 routes table + doc links; .gitignore review-*.png + tool-results.
+- Review artifacts: review-home-375.png, review-home-768.png, review-home-1440.png, review-mobile-menu-open.png.
+- Final: lint ✓, typecheck ✓, 55 pass/4 skip/0 fail ✓, dev boot clean (no console/runtime errors).
+
+Stage Summary:
+- Step 2 complete and browser-verified. Original dark-graphite + chartreuse storefront shell; all required routes render 320–1920px; a11y WCAG 2.2 AA (axe 0 violations); no fake interactivity; no customer auth/admin link.
+- Honest blockers: production build (`bun run build`) not run (sandbox rule) — verified via lint+typecheck+test+dev boot+agent-browser instead; Lighthouse not available in headless agent-browser — performance verified via static RSC + small client islands + no third-party scripts (documented); screenshots captured as artifacts but not visually inspected by the AI (layout verified programmatically instead).
+- No Step 3+ feature implemented (live catalog data, audio, admin, cart persistence, Stripe, orders, delivery, deployment all still pending).
+- Recommended next prompt title: Step 3 — Live catalog, product pages, filters, SEO, and audio previews.

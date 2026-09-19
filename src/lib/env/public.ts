@@ -26,7 +26,7 @@ export const publicEnvSchema = z.object({
   NEXT_PUBLIC_SITE_NAME: z
     .string()
     .min(1, "NEXT_PUBLIC_SITE_NAME must not be empty")
-    .default("Music Project Store"),
+    .default("Audio Project Store"),
   NEXT_PUBLIC_SUPABASE_URL: z
     .string()
     .trim()
