@@ -53,3 +53,7 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Step 2 review artifacts (transient screenshots/scan reports)
+review-*.png
+tool-results/
