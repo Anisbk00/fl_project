@@ -11,36 +11,27 @@ fabricated reviews, keyword stuffing, etc.).
 > layer only. No storefront, cart, checkout, admin CMS, or fulfillment exists
 > yet. See [`docs/ROADMAP.md`](./docs/ROADMAP.md).
 
-## Important: environment adaptation in this repository
+## Important: data platform
 
-The canonical master plan specifies **pnpm + Supabase + Vercel**. This
-development environment is a constrained sandbox that runs **bun + Prisma/SQLite
-+ Next.js 16**. Step 1 is implemented faithfully against the available stack
-while preserving the security and architecture intent of the plan:
+The store uses **Supabase only** for data (Postgres + Auth + Storage). There is
+**no local database and no Prisma** — nothing else is substituted in. The
+package manager for this development environment is **bun** (the plan specifies
+pnpm); `packageManager` is pinned to `bun@1.3.14` and `bun.lock` is committed.
 
-| Plan target (production) | Step 1 implementation here | Notes |
-| --- | --- | --- |
-| pnpm + lockfile | **bun** + `bun.lock` | `packageManager` pinned to `bun@1.3.14` |
-| Supabase Postgres migrations | **Prisma schema** (`prisma/schema.prisma`) | The same model, with the production enum/check/RLS mapping documented inline |
-| Supabase Row-Level Security | **Application-layer access matrix** in `src/features/catalog/data-access.ts` | The exact access matrix from `docs/SECURITY.md`, enforced in code and proven by DB-backed tests |
-| Supabase `is_admin()` SECURITY DEFINER | `src/lib/auth/is-admin.ts` | Allow-list keyed by user id; never trusts an email or claim |
-| Supabase Storage public/private buckets | **Prisma `product_media` / `product_deliverables`** + documented bucket model | Public reads never select private deliverables |
-| pgTAP / Supabase database tests | **bun test** DB-backed access-matrix tests | Prove allow + deny behavior against the real DB |
-| `supabase db reset` | `bun run db:push` | Creates the schema from the Prisma schema |
-| `pnpm` lockfile / `pnpm install` | `bun install` | A committed `bun.lock` is present |
-
-The production Supabase SQL migrations (enums, CHECK constraints, RLS policies,
-the `is_admin()` SECURITY DEFINER function, storage bucket policies) are
-committed under `supabase/migrations/` for the future hosted project. They are
-**not runnable in this SQLite sandbox** and are documented as a blocker.
+The Supabase SQL migrations (enums, CHECK constraints, RLS policies, the
+`is_admin()` SECURITY DEFINER function, storage bucket policies) are committed
+under `supabase/migrations/` and are the source of truth. A hand-authored
+TypeScript `Database` type (`src/types/database.ts`) mirrors them so the
+application type-checks and builds **without a live Supabase project**; in a
+real project, regenerate it with `supabase gen types`.
 
 ## Prerequisites
 
 - **Node.js 24.x** (pinned via `engines` in `package.json` and `.node-version`)
 - **bun 1.3.x** (the package manager for this environment)
-- **Docker** + **Supabase CLI** — required ONLY to run the committed Supabase
-  migrations/pgTAP tests against a real hosted/local Supabase project. **Not
-  available in this sandbox**; see "Blockers" below.
+- **Supabase CLI** + **Docker** — required to run the committed Supabase
+  migrations/pgTAP tests against a local Supabase project. **Not available in
+  this sandbox**; see "Blockers" below.
 
 ## Getting started
 
@@ -50,17 +41,18 @@ bun install
 
 # 2. Copy the environment template and fill in values (real secrets never committed)
 cp .env.example .env.local
-#   At minimum set DATABASE_URL. Supabase URL/publishable/secret keys can stay
-#   empty for the Step 1 placeholder home page; they are required from Step 3+.
+#   The Step 1 placeholder home page builds and boots with NO secrets. Supabase
+#   URL/publishable/secret keys are required once you link a project (Step 3+).
 
-# 3. Create/sync the database schema from the Prisma schema
-bun run db:push          # creates tables (the "supabase db reset" equivalent here)
-bun run db:generate      # generate TypeScript types that match the schema
+# 3. (With Docker + Supabase CLI) start local Supabase and apply migrations:
+supabase start
+supabase db reset         # applies all migrations in supabase/migrations/
+bun run db:types          # regenerates src/types/database.generated.ts from the live DB
 
 # 4. Run the checks
 bun run lint             # ESLint (Next.js 16 core-web-vitals + TS)
 bun run typecheck        # tsc --noEmit (strict, noUncheckedIndexedAccess)
-bun test                 # unit + DB-backed access-matrix tests
+bun test                 # unit tests + gated Supabase RLS integration suite (skips if no project linked)
 bun run dev              # start the dev server on http://localhost:3000
 ```
 
@@ -74,21 +66,23 @@ The **only user-visible route** is `/` (the Step 1 placeholder home page).
 | `bun run lint` | ESLint |
 | `bun run typecheck` | `tsc --noEmit` across the whole project |
 | `bun test` | Run all tests (bun test runner) |
-| `bun run test:db` | Run only the DB-backed access-matrix test |
-| `bun run db:push` | Push the Prisma schema to the DB |
-| `bun run db:generate` | Generate Prisma Client types |
-| `bun run db:seed` | Run the seed script (fictional data only) |
+| `bun run test:db` | Run the gated Supabase RLS integration suite |
+| `bun run db:reset` | `supabase db reset` (applies migrations) |
+| `bun run db:types` | `supabase gen types --typescript --local` |
 | `bun run build` | Production build (see "Blockers") |
 
-## Generating database TypeScript types
+## Database TypeScript types
+
+`src/types/database.ts` is a hand-authored `Database` type that mirrors the SQL
+migrations, so the app builds without a live Supabase project. Once a project
+is linked, regenerate from the live DB and prefer the generated file:
 
 ```bash
-bun run db:generate     # writes types to node_modules/@prisma/client
+bun run db:types   # writes types to stdout; redirect to src/types/database.generated.ts
 ```
 
-The generated types match the migration/schema (acceptance criterion). The
-public data-access layer (`src/features/catalog/data-access.ts`) derives its
-return types from these via `Prisma.ProductGetPayload<...>`.
+The data-access layer (`src/features/catalog/data-access.ts`) derives its
+public row shapes from the `Database` type.
 
 ## Linking a future hosted Supabase project (DO NOT commit secrets)
 
@@ -113,10 +107,12 @@ a deployment guide until Step 9 lands.
 - **Production build (`bun run build`)** is intentionally not run in this
   sandbox per environment rules. Verified instead via `bun run lint`,
   `bun run typecheck`, `bun test`, and a clean dev-server boot of `/`.
-- **Supabase migrations / pgTAP / real RLS** cannot run here (no Supabase/Docker
-  in the sandbox). The committed SQL is the source of truth for production;
-  the equivalent guarantees are proven at the application layer by
-  `tests/catalog/db-access.test.ts`.
+- **Supabase migrations / pgTAP / real RLS** cannot run here (no Supabase CLI /
+  Docker in the sandbox). The committed SQL (`supabase/migrations/`) is the
+  source of truth for production; the access-matrix deny rules are also
+  exercised by a gated JS integration suite (`tests/catalog/supabase-access.test.ts`)
+  that runs automatically once a project is linked, and by the pgTAP suite in
+  `supabase/tests/` (run with `supabase db test`).
 
 ## Documentation
 

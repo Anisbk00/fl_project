@@ -41,12 +41,7 @@ versus what is scheduled for later steps.
 
 ### Step 1 status
 
-Implemented: the catalog data model (Prisma schema mirroring the future
-Postgres model), the access matrix (in code here, via RLS in production), the
-validated environment module, three separated Supabase client factories
-(publishable / cookie server / privileged), the admin allow-list helper, and the
-security header baseline. NOT implemented: orders, payment, fulfillment,
-storefront UI, admin CMS.
+Implemented: the Supabase catalog data model (SQL migrations in `supabase/migrations/` plus a hand-authored `Database` type), the access matrix (RLS in production; the application data-access layer applies the identical filter as defense-in-depth), the validated environment module, three separated Supabase client factories (publishable / cookie server / privileged), the `requireAdmin` gate (the `is_admin()` RPC), and the security header baseline. There is NO local DB and NO Prisma — Supabase only.
 
 ## 2. Repository / module layout
 
@@ -69,19 +64,17 @@ src/
                           #   server.ts (lazy, server-only), index.ts
     supabase/             # publishable.ts / server.ts / privileged.ts
                           #   (each server-only-guarded; never in a client bundle)
-    auth/                 # is-admin.ts (admin allow-list gate), index.ts
-    security/            # headers.ts, redact.ts, rate-limit.ts (doc stub)
-    db.ts                 # Prisma client (warn/error logging only)
+    auth/                 # is-admin.ts (requireAdmin via is_admin() RPC), index.ts
+    security/             # headers.ts, redact.ts, rate-limit.ts (doc stub)
     utils.ts
   types/
+    database.ts           # hand-authored Supabase Database type (mirrors migrations)
 supabase/
-  migrations/             # production SQL (enums, CHECKs, RLS, is_admin()) — committed
-  tests/                  # production pgTAP tests — committed
-prisma/
-  schema.prisma           # the catalog model (the local/SQLite source of truth)
-  seed.ts                 # fictional seed (generic, no copyrighted assets)
+  migrations/             # production SQL — the source of truth
+                          # (enums, CHECKs, RLS, is_admin(), storage policies)
+  tests/                  # production pgTAP RLS tests
 tests/                    # bun tests (env, redact, visibility, publish-constraint,
-                          #   DB-backed access matrix, smoke)
+                          #   gated Supabase RLS suite, smoke)
 docs/                     # ARCHITECTURE, SECURITY, ROADMAP, DECISIONS
 .github/workflows/ci.yml  # CI (committed; not run in sandbox)
 ```
@@ -108,15 +101,18 @@ so a Client Component importing it fails the production build.
 `src/features/catalog/data-access.ts` is the only code that should touch catalog
 tables. It implements the access matrix:
 
-- **Public reads** use an explicit `select` (not `include`) that omits
-  `product_deliverables` and the admin audit columns (`createdById`,
-  `updatedById`). This guarantees a public read can never leak a private
-  relation added later.
-- **Public reads** filter on `lifecycle = 'published'` AND `rightsStatus IN
-  ('original','licensed')`.
-- **Every mutation** accepts an `adminUserId`, calls `requireAdmin` first,
-  validates input with Zod, then writes. A protected layout is never the only
-  authorization layer.
+- **Public reads** go through the publishable client and use an explicit
+  `select` string that omits `product_deliverables` and the admin audit
+  columns (`created_by_id`, `updated_by_id`). RLS additionally blocks
+  `product_deliverables` and `admin_users` for anon entirely. Defense in
+  depth: a public read can never leak a private relation.
+- **Public reads** filter on `lifecycle = 'published'` AND `rights_status IN
+  ('original','licensed')`, matching the identical RLS policy.
+- **Every mutation** accepts an authenticated `adminClient`, calls
+  `requireAdmin(adminClient)` (the `is_admin()` RPC) first, validates input
+  with Zod, then writes via `adminClient` — RLS permits because `is_admin()`
+  is true. A protected layout is never the only authorization layer, and the
+  privileged (secret) client is never used to compensate for RLS.
 
 ### Public vs private storage
 

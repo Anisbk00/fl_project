@@ -15,11 +15,11 @@ export default function HomePage() {
     "TypeScript strict mode with noUncheckedIndexedAccess",
     "Validated environment module (public vs server-only, Zod) with safe build defaults",
     "Three separated Supabase clients (publishable / cookie server / privileged), each server-only-guarded",
-    "Catalog Prisma schema: products, genres, plugins, joins, public media, private deliverables, admin allow-list",
-    "Application-layer access matrix mirroring Supabase RLS (anon sees only published + rights-cleared rows)",
+    "Supabase catalog schema (SQL migrations: products, genres, plugins, joins, public media, private deliverables, admin allow-list) with typed Database types",
+    "Access matrix enforced by Row-Level Security + a requireAdmin gate (the is_admin() RPC); no local DB, no Prisma — Supabase only",
     "Publication guardrail: a product cannot be published until rights-cleared and valid",
     "Baseline security headers (nosniff, frame DENY, referrer, permissions-policy); poweredByHeader off",
-    "Unit + DB-backed access-matrix tests proving allow/deny behavior",
+    "Unit tests + a gated Supabase RLS integration suite + committed pgTAP tests proving allow/deny behavior",
     "Architecture, security, roadmap, and decision-record documentation",
   ];
   const pending = [

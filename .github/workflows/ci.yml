@@ -12,12 +12,13 @@ concurrency:
 
 jobs:
   lint-typecheck-test:
-    name: Lint, type-check, unit & DB tests
+    name: Lint, type-check, unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # SQLite in CI needs no server; the placeholder home page needs no secrets.
-      DATABASE_URL: file:./db/ci.db
+      # The Step 1 placeholder home page and the unit tests need no secrets.
+      # The gated Supabase RLS integration suite skips automatically when
+      # Supabase env is absent (it runs in the supabase-rls-tests job below).
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
       NEXT_PUBLIC_SITE_NAME: Music Project Store
     steps:
@@ -42,25 +43,34 @@ jobs:
       - name: Type-check
         run: bun run typecheck
 
-      - name: Generate database TypeScript types
-        run: bun run db:generate
-
-      - name: Push schema to CI SQLite DB
-        run: bun run db:push
-
-      - name: Unit & DB-backed access-matrix tests
+      - name: Unit tests + gated Supabase RLS suite
         run: bun test
 
-  # Production Supabase migrations + pgTAP RLS tests.
-  # Requires Docker + the Supabase CLI local-container flow. Skipped in this
-  # sandbox; enable on a CI runner that has Docker available.
+  # Production Supabase migrations + pgTAP RLS tests + the JS RLS integration
+  # suite against a local Supabase project. Requires Docker + Supabase CLI.
+  # Not runnable in this sandbox; runs on a CI runner with Docker available.
   supabase-rls-tests:
-    name: Supabase migrations + pgTAP RLS tests (requires Docker)
+    name: Supabase migrations + RLS tests (requires Docker)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true
+    env:
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_SITE_NAME: Music Project Store
+      # Local Supabase publishes these on `supabase start`; the JS integration
+      # suite picks them up so it actually runs (instead of skipping).
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.LOCAL_SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_URL: http://127.0.0.1:54321
+      SUPABASE_SECRET_KEY: ${{ secrets.LOCAL_SUPABASE_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
@@ -71,3 +81,5 @@ jobs:
         run: supabase db reset
       - name: Run pgTAP database tests
         run: supabase db test
+      - name: Run JS RLS integration suite against local Supabase
+        run: bun run test:db

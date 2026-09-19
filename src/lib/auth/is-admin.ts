@@ -1,52 +1,51 @@
 import "server-only";
-import { db } from "@/lib/db";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 
 /**
  * Admin authorization.
  *
- * PRODUCTION MAPPING: this is the application-side mirror of the Supabase
- * `is_admin()` SECURITY DEFINER function. In production:
- *   - admin status is determined from `auth.uid()` (the authenticated Supabase
- *     session), NOT from an email or a browser-supplied claim;
- *   - the allow-list (`admin_users`) table is read by the SECURITY DEFINER
- *     function with a fixed `search_path`, least-privilege EXECUTE grants, and
- *     RLS that blocks public reads;
- *   - admin access additionally requires TOTP MFA / AAL2 before launch.
+ * PRODUCTION PATTERN: admin status is determined by the `is_admin()` Postgres
+ * SECURITY DEFINER function (see supabase/migrations/0002_rls_and_admin.sql),
+ * which consults `auth.uid()` against the private `admin_users` allow-list —
+ * never an email or a browser-supplied claim. We call it via the authenticated
+ * admin client's `rpc('is_admin')`. RLS then permits the catalog mutation
+ * because the `is_admin()` policy returns true.
  *
- * In this sandbox (no Supabase auth session wired in Step 1) the caller is
- * expected to pass the authenticated user id once admin auth is implemented
- * in Step 4. Until then, `requireAdmin` is a typed, server-only gate that
- * data-access write functions already call — so the moment a real admin id
- * is threaded through, the gate is already enforced.
+ * This means NO privileged/secret client is used for catalog mutations — the
+ * authenticated admin client + RLS is the real boundary. The privileged client
+ * remains reserved for genuinely service-level server-only work (e.g. webhook
+ * reconciliation in Step 6) and is never a crutch for RLS.
+ *
+ * Step 4 (admin auth + MFA/AAL2) obtains the admin client from the cookie
+ * server client and passes it here. Step 1 provides the typed gate so the
+ * moment a real admin client is threaded through, the gate is already enforced.
  */
 
+export class UnauthorizedError extends Error {}
+
+export type AdminClient = SupabaseClient<Database>;
+
 /**
- * True iff `userId` appears in the admin allow-list. Returns false for
- * null/undefined. Never throws on a missing user — it is simply not an admin.
+ * True iff the admin client's session is an allow-listed admin, per `is_admin()`.
  */
-export async function isAdmin(
-  userId: string | null | undefined,
+export async function isAdminSession(
+  adminClient: AdminClient,
 ): Promise<boolean> {
-  if (!userId) return false;
-  const row = await db.adminUser.findUnique({
-    where: { userId },
-    select: { userId: true },
-  });
-  return row !== null;
+  const { data, error } = await adminClient.rpc("is_admin");
+  if (error) return false;
+  return data === true;
 }
 
 /**
- * Throws `UnauthorizedError` unless `userId` is an allow-listed admin.
- * Every catalog mutation in src/features/catalog/data-access.ts calls this
- * (or an equivalent) before performing a write.
+ * Throws `UnauthorizedError` unless the admin client's session is an
+ * allow-listed admin. Every catalog mutation calls this first.
  */
-export class UnauthorizedError extends Error {}
-
 export async function requireAdmin(
-  userId: string | null | undefined,
+  adminClient: AdminClient,
 ): Promise<true> {
-  if (await isAdmin(userId)) return true;
+  if (await isAdminSession(adminClient)) return true;
   throw new UnauthorizedError(
-    "Unauthorized: this action requires an allow-listed admin.",
+    "Unauthorized: this action requires an allow-listed admin session.",
   );
 }
