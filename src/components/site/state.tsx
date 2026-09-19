@@ -66,15 +66,22 @@ export function ErrorState({
 }
 
 /** A neutral "no results" state for catalog contexts. */
-export function NoResultsState({ description }: { description?: string }) {
+export function NoResultsState({
+  description,
+  action,
+}: {
+  description?: string;
+  action?: ReactNode;
+}) {
   return (
     <EmptyState
       icon={<SearchX className="h-8 w-8" />}
       title="No products found"
       description={
         description ??
-        "There are no products matching this view yet. Live catalog filtering arrives in a later step."
+        "There are no products matching this view yet. Try adjusting your filters."
       }
+      action={action}
     />
   );
 }

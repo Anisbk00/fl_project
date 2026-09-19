@@ -127,6 +127,7 @@ export type Database = {
           published_at: string | null;
           created_by_id: string | null; // admin audit, never public
           updated_by_id: string | null; // admin audit, never public
+          search_vector: string | null; // generated FTS column (Step 3), never public
         };
         Insert: {
           id?: string;
@@ -301,6 +302,41 @@ export type Database = {
       is_admin: {
         Args: Record<string, never>;
         Returns: boolean;
+      };
+      // Step 3 public catalog RPCs (SECURITY INVOKER; return ONLY public columns).
+      // Returns are typed `unknown` here; the repository casts to its own DTO
+      // interfaces that match the SQL return columns exactly.
+      search_products: {
+        Args: {
+          p_q?: string;
+          p_types?: string[];
+          p_genres?: string[];
+          p_daw?: string;
+          p_plugins?: string[];
+          p_plugin_free?: boolean;
+          p_bpm_min?: number;
+          p_bpm_max?: number;
+          p_musical_key?: string;
+          p_price_min?: number;
+          p_price_max?: number;
+          p_price_currency?: string;
+          p_sort?: string;
+          p_page?: number;
+          p_page_size?: number;
+        };
+        Returns: unknown;
+      };
+      get_product_by_slug: {
+        Args: { p_slug: string };
+        Returns: unknown;
+      };
+      get_related_products: {
+        Args: { p_slug: string; p_limit?: number };
+        Returns: unknown;
+      };
+      list_free_products: {
+        Args: Record<string, never>;
+        Returns: unknown;
       };
     };
     CompositeTypes: Record<string, never>;

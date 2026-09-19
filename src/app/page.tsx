@@ -15,7 +15,7 @@ import { LinkButton } from "@/components/site/button";
 import { Badge } from "@/components/site/badge";
 import { ProductCard } from "@/components/site/product-card";
 import { HeroVisual } from "@/components/site/hero-visual";
-import { listFeaturedFixtureProducts } from "@/features/catalog/fixtures/products";
+import { FeaturedProducts } from "@/components/site/featured-products";
 import { PRODUCT_TYPE_LABELS, type ProductTypeVM } from "@/features/catalog/view-models";
 import { siteConfig } from "@/lib/site-config";
 
@@ -65,7 +65,6 @@ const faqPreview = [
 ] as const;
 
 export default function HomePage() {
-  const featured = listFeaturedFixtureProducts(6);
   const discovery = productTypeDiscovery.slice(0, 3);
   const free = productTypeDiscovery[3]!;
 
@@ -180,18 +179,14 @@ export default function HomePage() {
             <SectionHeading
               eyebrow="Featured"
               title="Recent production resources"
-              description="A typed presentation set — live catalog data arrives in Step 3."
+              description="Newest original DAW projects, stems, and sample packs from the live catalog."
             />
             <LinkButton href="/catalog" variant="outline">
               View all
             </LinkButton>
           </div>
           <div className="mt-8">
-            <Grid min="16rem">
-              {featured.map((p) => (
-                <ProductCard key={p.slug} product={p} />
-              ))}
-            </Grid>
+            <FeaturedProducts limit={6} />
           </div>
         </Container>
       </Section>
