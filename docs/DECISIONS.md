@@ -107,25 +107,31 @@ the storefront; a permissive one would protect nothing. Deferring avoids both
 failure modes and is documented honestly rather than pretending a placeholder
 is protection.
 
-## ADR-009 — Application-layer access matrix mirrors production RLS
+## ADR-009 — RLS is the real access boundary; the application layer is defense-in-depth
 
-**Decision:** Because this sandbox has no Supabase/RLS, the access matrix is
-enforced in `src/features/catalog/data-access.ts` and proven by DB-backed
-tests. In production, the same matrix is enforced by RLS policies + a
-`CHECK` constraint + the `is_admin()` SECURITY DEFINER function (committed in
-`supabase/migrations/`).
+**Decision:** Row-Level Security in Supabase Postgres IS the access matrix
+(anon sees only published + rights-cleared rows; `product_deliverables` and
+`admin_users` are denied to anon entirely; admin mutations are permitted only
+when `is_admin()` returns true). The application data-access layer applies the
+identical filter as defense-in-depth, but is never relied upon as the sole
+boundary.
 
-**Rationale:** Honesty about the environment. The guarantees are real and
-tested at the application layer; the production SQL is the source of truth for
-the hosted project.
+**Rationale:** Defense in depth. If a future server bug or a privileged-client
+misuse bypassed the application filter, RLS still prevents the leak; if RLS
+were somehow misconfigured, the application filter still narrows the result.
+The committed SQL (`supabase/migrations/0002_rls_and_admin.sql`) is the source
+of truth and is exercised by the pgTAP suite and the gated JS integration suite.
 
-## ADR-010 — bun + Prisma/SQLite in development (pnpm + Supabase in production)
+## ADR-010 — Supabase is the only data platform; bun is the package manager
 
-**Decision:** Develop against bun + Prisma/SQLite; target pnpm + Supabase +
-Vercel for production.
+**Decision:** Use Supabase (Postgres + Auth + Storage) as the only data
+platform. There is NO local database and NO Prisma. The package manager for
+this development environment is bun (the plan specifies pnpm; `packageManager`
+is pinned to `bun@1.3.14` with a committed `bun.lock`).
 
-**Rationale:** The canonical plan specifies pnpm + Supabase + Vercel. The
-development sandbox provides bun + Prisma/SQLite. Step 1 is implemented against
-the available stack with a documented, faithful mapping (see `README.md`) so
-the security/architecture intent is preserved without pretending to run tools
-that are unavailable.
+**Rationale:** The plan mandates Supabase. A hand-authored `Database` type
+(`src/types/database.ts`) mirrors the SQL migrations so the application
+type-checks and builds WITHOUT a live Supabase project — in a real project,
+regenerate it with `supabase gen types`. This preserves the Supabase-only
+data model exactly as specified, with no local-DB substitute, while keeping the
+build/test loop runnable before a project is linked.

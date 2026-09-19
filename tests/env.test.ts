@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import { publicEnv, publicEnvSchema } from "@/lib/env/public";
 import { getServerEnv, hasSupabaseServerConfig } from "@/lib/env/server";
 
@@ -24,46 +24,46 @@ describe("public environment", () => {
   });
 });
 
-describe("server environment", () => {
+describe("server environment (Supabase-only; no local DB)", () => {
   const original = { ...process.env };
 
-  beforeEach(() => {
-    // Clear Supabase-related server env for predictable assertions.
-    delete process.env.SUPABASE_URL;
-    delete process.env.SUPABASE_SECRET_KEY;
-  });
-
-  afterEach(() => {
-    // Restore only the keys we may have touched.
+  function restore() {
     for (const k of Object.keys(process.env)) {
       if (!(k in original)) delete process.env[k];
     }
     for (const [k, v] of Object.entries(original)) process.env[k] = v;
-  });
+  }
 
-  it("reports no Supabase config when the secret key is absent", () => {
-    expect(hasSupabaseServerConfig()).toBe(false);
-  });
-
-  it("throws when a required server variable (DATABASE_URL) is missing", () => {
-    const saved = process.env.DATABASE_URL;
-    delete process.env.DATABASE_URL;
-    expect(() => getServerEnv()).toThrow(/Server environment configuration/);
-    process.env.DATABASE_URL = saved;
-  });
-
-  it("succeeds when DATABASE_URL is set and Supabase is optional-empty", () => {
-    if (!process.env.DATABASE_URL) process.env.DATABASE_URL = "file:./tmp.db";
+  it("returns empty Supabase values (not an error) when unset", () => {
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SECRET_KEY;
     const env = getServerEnv();
     expect(env.SUPABASE_URL).toBe("");
     expect(env.SUPABASE_SECRET_KEY).toBe("");
     expect(hasSupabaseServerConfig()).toBe(false);
+    restore();
+  });
+
+  it("reports no Supabase config when only the URL is set", () => {
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    delete process.env.SUPABASE_SECRET_KEY;
+    expect(hasSupabaseServerConfig()).toBe(false);
+    restore();
   });
 
   it("reports Supabase configured when both URL and secret key are set", () => {
-    process.env.DATABASE_URL = process.env.DATABASE_URL || "file:./tmp.db";
     process.env.SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SECRET_KEY = "sb_secret_abcdefghijklmnopqrstuvwxyz";
     expect(hasSupabaseServerConfig()).toBe(true);
+    const env = getServerEnv();
+    expect(env.SUPABASE_URL).toBe("https://example.supabase.co");
+    restore();
+  });
+
+  it("never exposes a local DATABASE_URL (there is no local DB)", () => {
+    expect(
+      (getServerEnv() as unknown as Record<string, unknown>).DATABASE_URL,
+    ).toBeUndefined();
+    restore();
   });
 });

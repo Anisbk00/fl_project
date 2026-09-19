@@ -1,0 +1,928 @@
+     1→Music Project Store — Master Plan and Implementation Prompts
+     2→
+     3→Canonical project reference — created 18 September 2026; updated 19 September 2026
+     4→
+     5→1. Product vision and non-negotiable requirements
+     6→
+     7→Build a worldwide digital-product store for music producers, inspired by the useful parts of FLPStudio.com's business model but not copied visually or technically.
+     8→
+     9→The store will sell only content that the owner has the legal right to distribute, including:
+    10→
+    11→original DAW project files and educational remakes;
+    12→
+    13→original stems rendered by the owner;
+    14→
+    15→original WAV/sample packs comparable in format and usefulness to well-known producer packs, but containing no copied third-party audio, branding, artwork, or files;
+    16→
+    17→optional free products used as acquisition products.
+    18→
+    19→Core user requirements:
+    20→
+    21→Public storefront with no customer registration or customer login.
+    22→
+    23→Guest cart and guest checkout.
+    24→
+    25→Only the owner/admin can sign in.
+    26→
+    27→Admin can create, edit, archive, publish, and organize products and upload assets.
+    28→
+    29→Every product can have an audio preview and optional video preview.
+    30→
+    31→Every product page exposes useful technical information: product type, DAW and version, BPM, musical key, duration, included formats/files, total download size, required plugins and versions, genre, license summary, and update date.
+    32→
+    33→Payments use Stripe-hosted Checkout, with eligible major payment methods and wallets managed dynamically in Stripe. The application never handles card details.
+    34→
+    35→Paid deliverables are private and are never exposed by permanent public URLs.
+    36→
+    37→Supabase is the database, authentication, and object-storage platform.
+    38→
+    39→Vercel is the deployment platform.
+    40→
+    41→The finished product must be secure, fast, accessible, SEO-ready, observable, tested, and release-ready.
+    42→
+    43→2. Lessons carried forward from the FLP Studio audit
+    44→
+    45→The new product must deliberately improve on the weaknesses found in the reference store:
+    46→
+    47→Do not allow broken home-page redirects or dead collection links.
+    48→
+    49→Make a large catalog discoverable with filters for genre, BPM, musical key, DAW/version, plugins, product type, price, and recency.
+    50→
+    51→Use clean product names and readable cards; never truncate the only useful identifying information.
+    52→
+    53→Display compatibility information before purchase.
+    54→
+    55→Add verified-buyer reviews later; never fabricate reviews or structured review data.
+    56→
+    57→Use one semantic H1 per page and valid Product, Offer, BreadcrumbList, and eligible Review structured data.
+    58→
+    59→Avoid keyword stuffing and auto-generated low-quality product copy.
+    60→
+    61→Render money accessibly and consistently from integer minor units.
+    62→
+    63→Keep refund, license, privacy, consumer-rights, and download policies consistent.
+    64→
+    65→Clearly state independence from DAW vendors and referenced artists whenever legally appropriate.
+    66→
+    67→Add measurement for search, preview play, add-to-cart, checkout start, purchase, and download without leaking sensitive data.
+    68→
+    69→Prefer improving discovery and trust over blindly adding thousands of products.
+    70→
+    71→3. Architecture decisions
+    72→
+    73→Application
+    74→
+    75→Next.js 16 App Router, latest stable 16.x release at implementation time; no canary or beta framework packages.
+    76→
+    77→React and TypeScript versions selected by the stable Next.js release.
+    78→
+    79→Node.js 24.x, pinned in package.json and local tooling because it is Vercel's current default LTS runtime.
+    80→
+    81→pnpm with a committed lockfile and pinned package-manager version.
+    82→
+    83→TypeScript strict mode, including noUncheckedIndexedAccess.
+    84→
+    85→Tailwind CSS and shadcn/ui for the later visual-system phase; install only what Step 1 actually uses.
+    86→
+    87→Server Components by default. Client Components only for interactivity such as the audio player, filters, cart, and admin upload progress.
+    88→
+    89→No custom Express server. Use Server Actions for authenticated mutations and Route Handlers for webhooks, checkout creation, downloads, and other true HTTP endpoints.
+    90→
+    91→Every Server Action and Route Handler performs its own authentication, authorization, input validation, and rate-limit check where applicable. A protected layout or Next.js Proxy is never treated as the only authorization layer.
+    92→
+    93→Supabase
+    94→
+    95→Postgres is the source of truth for catalog metadata, orders, fulfillment state, and download grants.
+    96→
+    97→Supabase Auth is used only for manually provisioned admin accounts. Public self-sign-up is disabled.
+    98→
+    99→Admin authorization is based on the authenticated Supabase user ID appearing in a private admin allow-list, not merely an email supplied by the browser.
+   100→
+   101→Require TOTP MFA/AAL2 for admin access before production launch.
+   102→
+   103→Use current sb_publishable_... and sb_secret_... API keys. Do not build a new project around the legacy anon or service_role keys.
+   104→
+   105→The publishable key may be used in the browser because RLS is the real access boundary.
+   106→
+   107→The secret key is imported only from server-only modules and never appears in a client bundle, log, URL, repository, or public document.
+   108→
+   109→Enable RLS and explicit grants on every table in an exposed schema. Test allow and deny cases with pgTAP/Supabase database tests.
+   110→
+   111→Public visitors can read only published, rights-cleared catalog data and its explicitly public media.
+   112→
+   113→Public previews and cover images live in an intentionally public bucket for CDN delivery.
+   114→
+   115→Purchased archives/project files live in a private bucket. Later, a server-side fulfillment check will issue short-lived signed download URLs.
+   116→
+   117→Large admin uploads go directly from the authenticated admin browser to Supabase Storage using TUS/resumable uploads or signed upload tokens. Never proxy large ZIP/WAV/project files through Vercel Functions.
+   118→
+   119→Use immutable/versioned storage paths rather than overwriting the same CDN path.
+   120→
+   121→Payments and fulfillment — later phase
+   122→
+   123→Stripe-hosted Checkout, guest checkout, one-time payments.
+   124→
+   125→The server recalculates every line item from trusted database values; it never accepts price or entitlement data from the browser.
+   126→
+   127→Let Stripe dynamically present eligible payment methods configured for the merchant, currency, amount, and customer location. Do not promise that every method is available in every country.
+   128→
+   129→Stripe webhooks are the payment authority. The success page is for user experience, not proof of payment.
+   130→
+   131→Verify Stripe signatures against the raw request body.
+   132→
+   133→Make fulfillment idempotent and concurrency-safe using unique Stripe event/session/payment identifiers and database transactions.
+   134→
+   135→Handle both immediate success and delayed payment events before granting files.
+   136→
+   137→Use Stripe Tax or another reviewed tax solution only after merchant country, legal entity, and tax obligations are confirmed.
+   138→
+   139→Guest delivery — later phase
+   140→
+   141→Collect the customer's delivery email through Stripe Checkout.
+   142→
+   143→After verified payment, create an order, immutable order-item snapshots, and download grants.
+   144→
+   145→Email a high-entropy access link. Store only a cryptographic hash of the access token in the database.
+   146→
+   147→Validate token status, order payment status, expiry, revocation, and download limits before issuing a short-lived Supabase signed URL.
+   148→
+   149→Do not expose storage object paths in public catalog APIs.
+   150→
+   151→Be honest that signed links reduce casual unauthorized sharing but cannot provide perfect DRM after a customer downloads a file.
+   152→
+   153→Performance
+   154→
+   155→Render public catalog/product content on the server and cache/revalidate deliberately.
+   156→
+   157→Keep admin and order pages dynamic and uncached.
+   158→
+   159→Use optimized images, compressed preview audio, lazy loading, and small client bundles.
+   160→
+   161→Use URL search parameters for shareable catalog filters.
+   162→
+   163→Add indexes that match real catalog queries; confirm with query plans instead of guessing.
+   164→
+   165→Place Vercel Functions near the selected Supabase project region.
+   166→
+   167→Define measurable launch budgets later for Core Web Vitals, JavaScript weight, images, and audio.
+   168→
+   169→Security model
+   170→
+   171→Defend specifically against:
+   172→
+   173→unauthorized admin access and privilege escalation;
+   174→
+   175→public reads of drafts or private deliverables;
+   176→
+   177→secret-key exposure;
+   178→
+   179→price/cart manipulation;
+   180→
+   181→forged or replayed payment webhooks;
+   182→
+   183→duplicate fulfillment;
+   184→
+   185→guessing, replaying, or sharing download links;
+   186→
+   187→XSS through product descriptions and metadata;
+   188→
+   189→malicious or invalid uploads;
+   190→
+   191→abusive checkout/download/API traffic;
+   192→
+   193→sensitive customer/payment data appearing in logs;
+   194→
+   195→dependency and supply-chain vulnerabilities.
+   196→
+   197→Important controls include admin MFA, server-side authorization, RLS and grants, private storage, signed URLs, input schemas, sanitization, safe Markdown rather than arbitrary HTML, file allow-lists and size limits, checksums, rate limits, CSP/security headers, idempotency constraints, minimal data retention, dependency updates, audit logs, and tested backups.
+   198→
+   199→4. Phased implementation roadmap
+   200→
+   201→Step 1 — Foundation, architecture, and secure catalog data layer
+   202→
+   203→Create the repository, pinned toolchain, domain-oriented folder structure, environment validation, Supabase local configuration, catalog schema, storage buckets, RLS/grants, database security tests, CI, and architecture/security documentation. No production storefront, admin CMS, cart, or payment implementation yet.
+   204→
+   205→Step 2 — Brand system and responsive storefront shell
+   206→
+   207→Establish the original visual direction, responsive navigation, home-page information architecture, footer/trust navigation, accessible component primitives, loading/error/empty states, and performance budgets. Do not copy FLP Studio's design.
+   208→
+   209→Step 3 — Catalog, product pages, filters, SEO, and audio previews
+   210→
+   211→Build real data-backed catalog/product pages, fast URL-based filters, search, sorting, native performant preview playback, compatibility panels, related products, metadata, canonical URLs, sitemap, robots rules, Open Graph, and validated structured data.
+   212→
+   213→Step 4 — Admin authentication and product CMS
+   214→
+   215→Implement manually provisioned admin login, disabled public sign-up, MFA/AAL2 enforcement, protected server actions, product CRUD, draft/preview/publish workflow, rights-clearance gate, genres/plugins management, direct resumable uploads, validation, checksums, versioned assets, audit history, and safe delete/archive behavior.
+   216→
+   217→Step 5 — Cart and Stripe guest checkout
+   218→
+   219→Implement a durable guest cart, trusted server-side price lookup, checkout-session creation, dynamic eligible payment methods, customer email collection, terms/consumer consent where legally required, tax configuration, success/cancel flows, signature-verified webhooks, idempotent orders, refunds, and exhaustive test-mode scenarios.
+   220→
+   221→Step 6 — Secure digital fulfillment
+   222→
+   223→Implement private deliverables, order-item snapshots, hashed download tokens, email delivery, short-lived signed URLs, expiry/revocation/download limits, delayed-payment handling, refund revocation rules, resend/recovery flow without customer accounts, and fulfillment reconciliation.
+   224→
+   225→Step 7 — Trust, legal pages, reviews, and growth features
+   226→
+   227→Add consistent terms, privacy/cookie, refund, license, copyright/takedown, compatibility, and contact information reviewed for the operating jurisdiction. Add verified-purchase reviews, free-product/email funnel, bundles, promotions, recommendations, and trust content without dark patterns.
+   228→
+   229→Step 8 — Observability, security, performance, and accessibility hardening
+   230→
+   231→Add privacy-aware analytics, error monitoring, structured redacted logs, alerts, rate limits, bot controls, security headers/CSP, dependency/secret scanning, RLS regression tests, webhook/download abuse tests, WCAG review, browser/device E2E coverage, load checks, query analysis, Lighthouse/Core Web Vitals validation, backup/restore drill, and incident runbooks.
+   232→
+   233→Step 9 — Vercel production deployment and release
+   234→
+   235→Create separate development/preview/production configuration, provision production Supabase/Stripe/email services, rotate and scope secrets, set matching regions, configure domain/DNS/TLS, validate webhook endpoints, run migrations safely, seed the real admin, complete merchant/legal/tax checks, execute a release checklist and rollback test, perform a real low-value purchase/refund/download test, and launch with monitoring.
+   236→
+   237→5. Legal and operational release gate
+   238→
+   239→The store must not publish or sell:
+   240→
+   241→stems extracted from commercial masters;
+   242→
+   243→third-party sample-pack files, presets, MIDI, artwork, or project assets without redistribution rights;
+   244→
+   245→a famous song remake merely because it was recreated by ear, unless the composition, included audio/assets, naming, artwork, and intended distribution have been reviewed and cleared as required;
+   246→
+   247→product copy or branding that implies endorsement by an artist, label, DAW vendor, or sample-pack creator.
+   248→
+   249→The database therefore includes a rights status and prevents publication until a product is marked original or licensed. This is an engineering guardrail, not a substitute for legal advice. Before accepting live orders, verify business-registration, payment-processor eligibility, tax/VAT, consumer-contract, privacy, copyright, trademark, licensing, refund, and digital-withdrawal requirements for the actual operating jurisdiction and target markets.
+   250→
+   251→6. Exact prompt for the implementation AI — Step 1 only
+   252→
+   253→Copy everything inside the block below into the coding AI.
+   254→
+   255→You are a senior full-stack and application-security engineer. Implement Step 1 only of a production-grade worldwide digital music-product store. Read the complete repository and any project instructions before changing files. Preserve existing work. If the repository is empty, initialize it. Do not claim anything passed unless you actually ran it, and do not invent credentials or external resources.
+   256→
+   257→Full product context
+   258→
+   259→The finished product will sell legally distributable digital products for music producers: original DAW project files, educational remakes that have been legally cleared, original stems, and original WAV/sample packs. It is inspired by the product category of FLPStudio.com but must not copy its code, design, copy, branding, or assets.
+   260→
+   261→The eventual product has:
+   262→
+   263→a public storefront and catalog;
+   264→
+   265→no customer registration, login, or account area;
+   266→
+   267→a guest cart and guest Stripe-hosted Checkout;
+   268→
+   269→one or more manually provisioned admin users, with admin-only sign-in and MFA before production;
+   270→
+   271→admin product creation/editing/publishing and direct asset uploads;
+   272→
+   273→cover art, audio previews, optional video previews, and private paid files;
+   274→
+   275→detailed fields and filters for product type, genre, DAW/version, BPM, musical key, duration, plugins/versions, formats, file size, price, and date;
+   276→
+   277→Supabase for Postgres, Auth, and Storage;
+   278→
+   279→Vercel for deployment;
+   280→
+   281→later secure fulfillment through verified Stripe webhooks, guest email delivery, hashed access tokens, and short-lived private-storage signed URLs.
+   282→
+   283→Important: customer auth must never be introduced as a shortcut. Only admins authenticate. Public visitors use the Supabase anon Postgres role through the publishable key and may read only deliberately public, published data.
+   284→
+   285→Scope boundary
+   286→
+   287→In this task, implement only the technical foundation and secure catalog data layer. Do not implement the finished visual design, full catalog UI, audio player, admin CMS screens, cart, Stripe integration, orders, emails, reviews, analytics, or deployment. You may provide a minimal accessible placeholder home page proving the app builds. Stop after the Step 1 acceptance criteria pass.
+   288→
+   289→Required stable toolchain
+   290→
+   291→Use versions that are stable on the implementation date and commit the lockfile. As of the project decision date, the intended baseline is:
+   292→
+   293→Next.js 16 App Router, latest stable 16.x; never canary/beta;
+   294→
+   295→React version selected by that stable Next.js release;
+   296→
+   297→TypeScript strict mode;
+   298→
+   299→Node.js 24.x, pinned in package.json engines and an appropriate local version file;
+   300→
+   301→pnpm, with its exact package-manager version pinned;
+   302→
+   303→current stable Tailwind CSS only if needed for the minimal shell;
+   304→
+   305→@supabase/supabase-js and @supabase/ssr;
+   306→
+   307→Zod for environment and boundary validation;
+   308→
+   309→ESLint using the supported Next.js 16 setup plus Prettier, without introducing a second competing linter;
+   310→
+   311→Vitest for unit tests and Playwright prepared for later E2E tests;
+   312→
+   313→Supabase CLI migrations and pgTAP/Supabase database tests.
+   314→
+   315→Before installing, check the current official compatibility requirements. Avoid unnecessary dependencies.
+   316→
+   317→Repository and module architecture
+   318→
+   319→Use a clear domain-oriented layout equivalent to:
+   320→
+   321→src/
+   322→  app/
+   323→    (store)/
+   324→    admin/
+   325→    api/
+   326→  components/
+   327→    ui/
+   328→  features/
+   329→    catalog/
+   330→    admin/
+   331→    checkout/
+   332→    fulfillment/
+   333→  lib/
+   334→    env/
+   335→    supabase/
+   336→    auth/
+   337→    security/
+   338→  types/
+   339→supabase/
+   340→  migrations/
+   341→  tests/
+   342→docs/
+   343→tests/
+   344→
+   345→Do not create empty abstraction layers merely to match the tree. Use server-only guards for every module that can access secret keys or privileged data. Public, authenticated SSR, and privileged Supabase clients must be separate and impossible to import accidentally into a Client Component.
+   346→
+   347→Configure TypeScript with strict, noUncheckedIndexedAccess, and other safe compatible checks. Do not use any to silence design problems.
+   348→
+   349→Environment and secrets
+   350→
+   351→Create a validated environment module and .env.example containing placeholders only for at least:
+   352→
+   353→NEXT_PUBLIC_SITE_URL=
+   354→NEXT_PUBLIC_SITE_NAME=
+   355→NEXT_PUBLIC_SUPABASE_URL=
+   356→NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+   357→SUPABASE_URL=
+   358→SUPABASE_SECRET_KEY=
+   359→
+   360→Use the current Supabase sb_publishable_... and sb_secret_... key model. Do not use legacy anon/service_role variable names in this new app. Validate public and server-only variables separately. Ensure all real .env* files are ignored except the example. Never print secret values, include them in errors, or expose SUPABASE_SECRET_KEY to the client.
+   361→
+   362→Supabase local project and migrations
+   363→
+   364→Initialize reproducible local Supabase configuration and SQL migrations. Do not make undocumented Dashboard-only schema changes.
+   365→
+   366→Create a minimal secure catalog model with proper foreign keys, checks, timestamps, and indexes. Use separate tables for public preview media and private paid deliverables so a public API cannot accidentally return private storage paths.
+   367→
+   368→The initial model must cover at least:
+   369→
+   370→A private admin allow-list keyed by auth.users.id. It must not expose admin identities publicly.
+   371→
+   372→products with:
+   373→
+   374→UUID primary key;
+   375→
+   376→unique validated slug;
+   377→
+   378→title, short description, and safe Markdown/plain-text long description (no arbitrary stored HTML);
+   379→
+   380→product type enum such as project_file, remake, stems, sample_pack;
+   381→
+   382→lifecycle status enum draft, published, archived;
+   383→
+   384→rights status enum unreviewed, original, licensed, rejected;
+   385→
+   386→integer price in minor currency units, uppercase ISO-style currency code, and optional compare-at price with valid checks;
+   387→
+   388→DAW name/version, BPM with a sensible range, musical key, duration, aggregate file size, included format labels, featured flag;
+   389→
+   390→SEO title/description fields with sensible length checks;
+   391→
+   392→created/updated/published timestamps and creating/updating admin IDs where appropriate.
+   393→
+   394→Normalized genres and product-genre joins.
+   395→
+   396→Normalized plugins and product-plugin requirements, including optional minimum version and whether each plugin is required.
+   397→
+   398→product_media for public cover/audio/video preview metadata and versioned storage object paths or a validated external video URL.
+   399→
+   400→product_deliverables for private archives/project files, including bucket, immutable object path, customer-facing filename, MIME type, bytes, version, SHA-256 checksum, active flag, and timestamps.
+   401→
+   402→Use names that remain clear in generated TypeScript types. Do not add order/payment/download tables yet; they belong to later steps.
+   403→
+   404→Add an updated_at mechanism. Add only indexes justified by the planned public catalog and admin queries, including published listing and slug lookup. Avoid premature generic indexes.
+   405→
+   406→Enforce at the database level that a product cannot be published unless:
+   407→
+   408→its rights status is original or licensed;
+   409→
+   410→it has a valid published_at value;
+   411→
+   412→its price/currency and required public metadata are valid.
+   413→
+   414→Archived or draft products must not be public.
+   415→
+   416→Authorization, grants, and RLS
+   417→
+   418→Treat RLS and SQL grants as one design. Enable RLS on every table in an exposed schema, revoke broad defaults, and grant back only required operations.
+   419→
+   420→Use a carefully written SECURITY DEFINER admin-check function with an empty/fixed search_path, least privilege, and explicit execute grants. Admin status must be determined from auth.uid() and the private allow-list. Do not trust an email, request field, or client claim as admin authorization.
+   421→
+   422→Required access matrix:
+   423→
+   424→anonymous/public visitor: may select only published, rights-cleared products and their public taxonomy/requirements/media;
+   425→
+   426→anonymous/public visitor: cannot see draft/archived/rejected/unreviewed products, private deliverable rows, admin identities, or private paths;
+   427→
+   428→anonymous/public visitor: cannot insert, update, or delete anything;
+   429→
+   430→authenticated non-admin: gains no mutation powers and cannot see private deliverables or admin data;
+   431→
+   432→authenticated allow-listed admin: can perform the catalog-management operations needed by the later CMS;
+   433→
+   434→privileged secret-key server client: reserved for narrowly reviewed server-only operations and never used to compensate for broken RLS.
+   435→
+   436→Write separate policies per operation rather than one opaque FOR ALL policy. Ensure joins cannot leak unpublished product relationships.
+   437→
+   438→Storage architecture
+   439→
+   440→Provision through migrations/config where supported:
+   441→
+   442→product-public: intentionally public, for cover images and compressed preview audio/video only;
+   443→
+   444→product-private: private, for customer deliverables.
+   445→
+   446→Only allow an allow-listed authenticated admin to create, replace, or delete objects. Do not grant anonymous writes. Do not grant customers or public users direct access to the private bucket. The later fulfillment server will issue short-lived signed URLs after verifying payment and a download grant.
+   447→
+   448→Document that large files must upload directly from the admin browser using Supabase TUS/resumable uploads or a signed upload token, using the direct storage hostname. They must never traverse a Vercel Function because Vercel Function payloads are unsuitable for large music archives. Prefer new immutable object paths over overwrite/upsert.
+   449→
+   450→Seed data
+   451→
+   452→Provide deterministic local seed data only if it helps test policies. Use fictional original product names and generic metadata. Do not use famous artists, song titles, album art, KSHMR assets/names as product branding, commercial stems, or copyrighted audio. Do not seed broken media URLs. Never seed a real admin email or password.
+   453→
+   454→Tests
+   455→
+   456→Add database tests that prove both allowed and denied behavior. At minimum test:
+   457→
+   458→anon sees a published rights-cleared product;
+   459→
+   460→anon does not see draft, archived, rejected, or unreviewed products;
+   461→
+   462→anon cannot mutate catalog tables;
+   463→
+   464→authenticated non-admin cannot mutate catalog tables;
+   465→
+   466→allow-listed admin can perform intended CRUD;
+   467→
+   468→public taxonomy/media joins reveal data only for published products;
+   469→
+   470→no public/authenticated non-admin query can read product_deliverables or the admin allow-list;
+   471→
+   472→storage write policies reject anon/non-admin and allow admin in the correct bucket/path;
+   473→
+   474→the publication constraint rejects an unreviewed product.
+   475→
+   476→Add focused unit tests for environment validation and any security helper that can be tested without mocking away its behavior. Add a minimal application smoke test. Tests must fail closed.
+   477→
+   478→Baseline application security
+   479→
+   480→Add safe baseline response headers: X-Content-Type-Options, a strict referrer policy, an appropriate permissions policy, and clickjacking protection. Document the production CSP design, but do not ship a fake or broken CSP before all required origins are known.
+   481→
+   482→Set poweredByHeader: false.
+   483→
+   484→Keep server-side code outside the client graph.
+   485→
+   486→Validate every trust boundary with Zod or database constraints.
+   487→
+   488→Never render unsanitized stored HTML.
+   489→
+   490→Do not log credentials, full payment/customer records, tokens, or private storage URLs.
+   491→
+   492→Add placeholders/documentation for later rate limiting; do not pretend an in-memory limiter in a serverless process is production protection.
+   493→
+   494→CI and developer experience
+   495→
+   496→Create scripts with clear names for development, lint, type-check, unit tests, database tests, E2E preparation, and production build. Add a GitHub Actions CI workflow that uses the lockfile and runs the checks feasible without production secrets. Include Supabase database reset/tests in CI if the official local-container flow is available. Add dependency-update configuration if appropriate.
+   497→
+   498→Create a README with exact setup commands for:
+   499→
+   500→required Node/pnpm/Docker/Supabase CLI prerequisites;
+   501→
+   502→installing dependencies;
+   503→
+   504→copying the environment example;
+   505→
+   506→starting/resetting local Supabase;
+   507→
+   508→generating database TypeScript types from the schema;
+   509→
+   510→running the app and every test/check;
+   511→
+   512→linking a future hosted Supabase project without committing secrets;
+   513→
+   514→deploying later to Vercel without claiming deployment is part of this step.
+   515→
+   516→Create:
+   517→
+   518→docs/ARCHITECTURE.md with the full end-state topology, data boundaries, caching strategy, and why large uploads bypass Vercel;
+   519→
+   520→docs/SECURITY.md with assets, actors, trust boundaries, threats, controls, secret handling, admin-only auth, RLS rules, and future payment/download requirements;
+   521→
+   522→docs/ROADMAP.md listing Steps 2–9 and explicitly marking them unimplemented;
+   523→
+   524→a short decision record that explains why hosted Stripe Checkout, guest checkout, private Supabase delivery storage, and webhook-authoritative fulfillment are the future design.
+   525→
+   526→Step 1 acceptance criteria
+   527→
+   528→Do not finish until all applicable criteria are met:
+   529→
+   530→Fresh install from the committed lockfile succeeds.
+   531→
+   532→Lint succeeds.
+   533→
+   534→Type-check succeeds.
+   535→
+   536→Unit/smoke tests succeed.
+   537→
+   538→Production build succeeds without real production secrets, using a documented safe validation strategy for build/CI.
+   539→
+   540→supabase db reset succeeds locally.
+   541→
+   542→Supabase/pgTAP database and RLS tests succeed.
+   543→
+   544→Generated database TypeScript types match the migration schema.
+   545→
+   546→No committed credential, secret, real customer/admin data, copyrighted music asset, or private deliverable exists.
+   547→
+   548→The public client cannot read drafts, private deliverables, or admin data, as demonstrated by tests.
+   549→
+   550→Documentation describes what is implemented and does not claim Steps 2–9 are complete.
+   551→
+   552→If a tool such as Docker is unavailable, still create correct reproducible files, run every other check, and report the exact unverified command as a blocker. Do not replace a failed test with an assertion that the design is correct.
+   553→
+   554→Final response format
+   555→
+   556→When finished, report:
+   557→
+   558→concise outcome;
+   559→
+   560→architecture and security decisions actually implemented;
+   561→
+   562→important files created/changed;
+   563→
+   564→exact commands run and pass/fail results;
+   565→
+   566→assumptions and blockers;
+   567→
+   568→confirmation that no Step 2+ feature was implemented;
+   569→
+   570→the recommended next prompt title: Step 2 — Brand system and responsive storefront shell.
+   571→
+   572→Do not proceed to Step 2.
+   573→
+   574→7. Official references used to validate this plan
+   575→
+   576→Next.js production guidance
+   577→
+   578→Vercel supported Node.js versions
+   579→
+   580→Vercel Function limits
+   581→
+   582→Supabase API keys
+   583→
+   584→Supabase Row Level Security
+   585→
+   586→Supabase Storage access control
+   587→
+   588→Supabase serving public/private assets
+   589→
+   590→Supabase resumable uploads
+   591→
+   592→Supabase SSR clients for Next.js
+   593→
+   594→Stripe Checkout fulfillment
+   595→
+   596→Stripe webhook signature verification
+   597→
+   598→Stripe dynamic payment methods
+   599→
+   600→EU consumer rules for digital content
+   601→
+   602→EU returns and digital-content withdrawal exception
+   603→
+   604→8. Exact prompt for the coding AI — Step 2
+   605→
+   606→Copy everything inside the following block into the coding AI after Step 1 has been implemented. Give that AI access to the existing repository and the Step 1 completion report. Do not use this prompt against a blank replacement repository.
+   607→
+   608→You are implementing Step 2 of an existing production project:
+   609→
+   610→STEP 2 — ORIGINAL BRAND SYSTEM AND RESPONSIVE STOREFRONT SHELL
+   611→
+   612→This is an implementation task, not a proposal or a mockup-only exercise. Work in the existing repository, preserve the Step 1 architecture and security controls, implement the requested code, run the verification commands, inspect the rendered result at several viewport sizes, and stop at the Step 2 boundary.
+   613→
+   614→Read before changing anything
+   615→
+   616→1. Read the entire repository, especially README.md, docs/ARCHITECTURE.md, docs/SECURITY.md, docs/ROADMAP.md, package.json, the App Router structure, lint/type/test configuration, Supabase migrations and tests, middleware/proxy code, environment examples, and the Step 1 completion report.
+   617→2. Read the canonical Music Project Store master plan and Step 1 prompt supplied with the repository. Its product, legal, security, data, deployment, and scope decisions remain authoritative.
+   618→3. Inspect git status before editing. Preserve all user changes and do not reset, discard, or rewrite unrelated work.
+   619→4. Use the dependency versions and package manager already locked by the repository. Do not perform broad upgrades or replace the foundation merely because you prefer a different stack.
+   620→
+   621→Mandatory preflight gate
+   622→
+   623→Before implementing Step 2, verify Step 1 instead of assuming it is complete:
+   624→
+   625→- install dependencies with the repository's frozen lockfile command;
+   626→- run lint, TypeScript checking, existing unit/integration tests, and a production build;
+   627→- run the local Supabase reset/migration and pgTAP/RLS test workflow when the required local runtime is available;
+   628→- check that no secret or real credential is committed;
+   629→- check that public clients cannot access draft products, admin-only tables, private storage objects, or privileged mutations;
+   630→- confirm that the project still uses strict TypeScript, the Next.js App Router, server components by default, Supabase with RLS, and separate public-preview/private-deliverable storage boundaries.
+   631→
+   632→If a small Step 1 defect blocks Step 2, fix it first and identify that fix separately in the final report. If the foundation, migrations, RLS, or secret handling are materially missing or unverifiable, stop and report the blocker; do not hide it under visual work. Never weaken security or tests to make a command pass.
+   633→
+   634→Project facts that must remain true
+   635→
+   636→- This is a worldwide digital store for music producers selling only content the owner has the right to distribute: original/authorized project files and educational remakes, original stems, original WAV/sample packs, and optional free products.
+   637→- No customer accounts or customer login exist. Only the owner/admin will authenticate.
+   638→- Supabase is the database/auth/storage platform. Vercel is the deployment target.
+   639→- Future checkout will use Stripe-hosted Checkout. Future order creation and delivery will be webhook-authoritative and idempotent.
+   640→- Public cover images and preview media are separate from private paid deliverables.
+   641→- A product may eventually be publicly published only when its rights status is `original` or `licensed`.
+   642→- Do not copy the visual identity, code, layout, product wording, media, or assets of FLPStudio.com, Splice, a producer, artist, label, DAW vendor, or sample-pack company. Category inspiration is allowed; imitation is not.
+   643→- Do not introduce third-party music, album art, artist likenesses, trademarks used as branding, extracted commercial stems, or files without redistribution rights.
+   644→
+   645→Step 2 objective
+   646→
+   647→Build a polished, original, mobile-first visual system and the reusable public storefront shell that later steps can connect to real catalog data and commerce. The result should already feel like a credible premium music-production store at every common viewport, but must not pretend that unfinished commerce features work.
+   648→
+   649→This step includes:
+   650→
+   651→- the visual direction and semantic design tokens;
+   652→- global typography and layout primitives;
+   653→- accessible reusable UI components required by the shell;
+   654→- the global header, mobile navigation, main-content structure, and footer;
+   655→- a complete home-page presentation using clearly isolated typed fixture data;
+   656→- static presentation shells for essential public routes so internal navigation has no broken links;
+   657→- global loading, error, empty, and not-found presentation patterns;
+   658→- basic site metadata and social-preview fallbacks;
+   659→- responsive, accessibility, visual-regression, and performance verification appropriate to this step;
+   660→- design-system and content-guidance documentation.
+   661→
+   662→This step explicitly excludes:
+   663→
+   664→- fetching the live catalog from Supabase;
+   665→- production catalog filtering, sorting, search, pagination, product-detail logic, or structured product SEO;
+   666→- real audio/video preview playback or waveform processing;
+   667→- admin sign-in, the admin CMS, uploads, or content publishing workflows;
+   668→- persistent cart behavior, discount logic, Stripe, checkout, webhooks, orders, email, downloads, or fulfillment;
+   669→- customer accounts of any kind;
+   670→- reviews, analytics, newsletter submission, support-ticket submission, or other backend integrations;
+   671→- final lawyer-reviewed legal policies;
+   672→- production deployment.
+   673→
+   674→Do not add fake interactivity. A visible control must either work within this step, navigate to a valid route, be an honest disabled/coming-later state where appropriate, or be omitted until its implementation step. Never simulate a successful checkout, download, newsletter signup, audio player, review, or contact submission.
+   675→
+   676→Visual direction
+   677→
+   678→Create an original identity with the following art direction:
+   679→
+   680→- premium, precise, energetic, and producer-focused rather than gamer-like or corporate;
+   681→- a dark graphite/near-black foundation, warm off-white typography, restrained neutral surfaces, and one high-energy accent in the chartreuse/lime family;
+   682→- a secondary cool violet or blue may be used sparingly for technical/audio-data states, never as an uncontrolled rainbow gradient;
+   683→- editorial typography paired with technical details, subtle grid/waveform/routing-line motifs, crisp borders, and measured depth;
+   684→- dense enough to communicate useful product information, but with calm spacing and an obvious hierarchy;
+   685→- motion should clarify state and hierarchy, not decorate every element;
+   686→- no excessive glow, glassmorphism, gradient text, giant mobile headlines, autoplay media, scroll hijacking, custom cursor, or decorative animation library.
+   687→
+   688→The identity must not depend on a permanent brand name that has not been approved. Implement a single central site configuration for name, short description, support address placeholder, and social metadata. If the repository has no confirmed name, use `Audio Project Store` only as an explicitly documented working label and make replacement a one-file or environment-level change. Do not invent claims, a company history, social accounts, awards, sales counts, ratings, or customer quotes.
+   689→
+   690→Create an original, simple geometric brand mark suitable for a favicon and header—such as an abstract waveform/routing glyph—using local SVG/CSS that you author. Do not copy an existing logo or turn text into an inaccessible image. The text wordmark must remain real text.
+   691→
+   692→Design-token requirements
+   693→
+   694→Centralize semantic tokens instead of scattering raw values through components. Include, at minimum:
+   695→
+   696→- canvas, surface, elevated surface, inset surface;
+   697→- primary text, secondary text, muted text, inverse text;
+   698→- subtle border, strong border, focus ring;
+   699→- primary accent and its readable foreground;
+   700→- informational/secondary accent;
+   701→- success, warning, destructive, and their readable foreground/background variants;
+   702→- spacing scale, content/container widths, corner radii, shadows, z-index layers, transition durations, and easing;
+   703→- typography roles for display, heading, body, label, caption, price, and technical/monospace data.
+   704→
+   705→Use CSS custom properties as the semantic source of truth and map them into the existing styling system. Prefer perceptually consistent color notation if supported by the existing toolchain. Validate contrast; do not assume an accent color is accessible because it looks bright. Document the final token values and their intended usage in `docs/DESIGN_SYSTEM.md`.
+   706→
+   707→Use no more than two font families. Load them through `next/font` so they are self-hosted by the application with no browser request to a font provider. Define sensible system fallbacks and avoid loading unnecessary weights or subsets.
+   708→
+   709→Reusable component requirements
+   710→
+   711→Adapt naming to the existing repository, but create a coherent small component layer rather than one monolithic home page. At minimum, provide:
+   712→
+   713→- `SiteHeader` and an accessible mobile navigation dialog/sheet;
+   714→- `SiteFooter`;
+   715→- `Container`, section/stack/grid layout primitives where they prevent repetition;
+   716→- heading/text primitives or consistently documented typography classes;
+   717→- `Button` and `IconButton` variants with hover, active, focus-visible, disabled, and loading-safe states;
+   718→- `Badge`/tag treatment;
+   719→- `Price` formatter built on `Intl.NumberFormat`, not string concatenation;
+   720→- `ProductCard` presentation component using a typed view model;
+   721→- `ProductArtwork` or cover treatment with a stable aspect ratio;
+   722→- `SectionHeading`;
+   723→- `EmptyState`, `ErrorState`, and skeleton/loading treatment;
+   724→- a visually hidden utility and a keyboard-visible skip link;
+   725→- the minimal accessible dialog/sheet primitive required for mobile navigation.
+   726→
+   727→Reuse high-quality primitives already installed in Step 1. If the repository intentionally uses shadcn/ui or Radix primitives, add only what this step needs and keep the generated source owned by the repository. Do not install a large UI kit, carousel, animation system, state manager, or icon pack if an existing dependency or a small local implementation is sufficient. Use one consistent SVG icon set if already present; never use emoji as interface icons.
+   728→
+   729→Default to React Server Components. Add `use client` only at the smallest interaction boundary, principally the mobile navigation and any genuinely interactive disclosure. Do not turn the layout or whole home page into a client component.
+   730→
+   731→Accessibility behavior
+   732→
+   733→- Use semantic landmarks: header, nav, main, sections with meaningful headings, and footer.
+   734→- The first keyboard action must make a skip-to-content link visible.
+   735→- Every interactive element must be reachable and operable with a keyboard and have an obvious focus-visible state.
+   736→- The mobile menu must expose an accessible name, trap/focus correctly, close with Escape, return focus to its trigger, and prevent accidental background interaction while open.
+   737→- Icon-only buttons need accessible names. Decorative icons and motifs must be hidden from assistive technology.
+   738→- Preserve logical heading order. Do not choose heading levels for their visual size.
+   739→- Text and meaningful UI contrast must meet WCAG 2.2 AA. Aim for at least 4.5:1 for normal text and 3:1 for large text and meaningful component boundaries.
+   740→- Use at least 44-by-44 CSS-pixel practical pointer targets for primary controls where layout allows, never below the WCAG 2.2 minimum without an applicable exception.
+   741→- Respect `prefers-reduced-motion`; essential meaning cannot depend on motion, hover, color alone, or audio.
+   742→- Do not use placeholder text as the only label. Do not suppress focus outlines without a stronger replacement.
+   743→- Avoid nested interactive elements in cards. If the card title is the link, secondary controls must be separate siblings.
+   744→
+   745→Responsive requirements
+   746→
+   747→Implement mobile first and inspect at 320, 375, 768, 1024, 1440, and 1920 CSS pixels wide. The page must have no unintended horizontal overflow at 320 pixels, no clipped focus rings, no unreadable technical metadata, and no breakpoint where the navigation or cards collide.
+   748→
+   749→- Use fluid type and spacing only within controlled minimum/maximum values.
+   750→- Keep reading text to a sensible line length.
+   751→- Product grids should progress naturally from one column to multiple columns without creating tiny cards.
+   752→- Header controls must remain understandable without relying on desktop-only labels.
+   753→- The footer must reflow into a clear hierarchy rather than a compressed row.
+   754→- Stable aspect ratios and explicit media dimensions must prevent layout shift.
+   755→
+   756→Public information architecture and routes
+   757→
+   758→Build the following routes as polished presentation shells. Use the route conventions already established by the repository and do not create competing directory structures.
+   759→
+   760→1. `/` — complete home page.
+   761→2. `/catalog` — a visually complete catalog shell using typed fixtures, with a clear note in code/docs that live data and real filtering arrive in Step 3. Do not render non-working filter widgets.
+   762→3. `/free` — a small free-download discovery shell using fixtures; no fake download action.
+   763→4. `/cart` — a polished empty-cart state only. Do not create cart persistence or checkout controls.
+   764→5. `/about` — concise, truthful mission and originality statement without invented company history.
+   765→6. `/faq` — initial buyer questions about file types, compatibility, licensing, and future delivery, carefully worded so incomplete functionality is not claimed as live.
+   766→7. `/contact` — a presentation shell with support guidance; do not add a non-functional form. Use the central support configuration and clearly document any placeholder.
+   767→8. `/legal/license`, `/legal/refunds`, `/legal/privacy`, and `/legal/terms` — clearly labelled draft structure pages for later legal review, carrying `noindex` metadata until approved. They must not pretend to be final legal advice or final policies.
+   768→
+   769→Also implement a branded `not-found` page, a route-level/global error presentation following Next.js requirements, and useful loading/skeleton UI where it is actually exercised. Internal navigation links shown to users must resolve without a 404. Do not expose an admin link in the public header; the future admin entry point is deliberately private/unadvertised.
+   770→
+   771→Header requirements
+   772→
+   773→- compact brand mark and text wordmark;
+   774→- desktop links for Catalog, Project Files, Stems, Sample Packs, Free, and About, with category links represented as query/link targets that Step 3 can honor;
+   775→- a Cart link showing zero items and leading to the valid empty-cart shell;
+   776→- no customer sign-in or account link;
+   777→- accessible mobile navigation containing the same destinations;
+   778→- optional restrained announcement text only if it is truthful and configured centrally; do not use a fake countdown or fake scarcity.
+   779→
+   780→Home-page requirements
+   781→
+   782→Create a purposeful narrative, not a collection of generic blocks:
+   783→
+   784→1. Hero: clearly explain that buyers can study and use detailed production resources. Include one primary CTA to `/catalog` and one secondary CTA to `/free`. Use an original CSS/SVG technical visual, not stock/copyrighted artwork.
+   785→2. Trust/value strip: three short, supportable principles such as transparent compatibility details, original/authorized content, and secure checkout/delivery architecture. Avoid claiming production payment or instant delivery is already live in this development step.
+   786→3. Product-type discovery: Project Files, Stems, Sample Packs, and Free Downloads, each with a distinct but coherent original visual treatment and a valid destination.
+   787→4. Featured resources: 4–8 product cards populated from isolated typed fixtures. Demonstrate different product types, prices, DAWs, BPM/key values, and compatibility tags without artist names or copied brand artwork.
+   788→5. Technical transparency section: show why DAW version, plugins, key, BPM, formats, file size, and license information will be visible before purchase.
+   789→6. Originality/licensing statement: explain that the store publishes only original or properly licensed material and is independent of artists, labels, and DAW vendors.
+   790→7. Free-resource teaser: route visitors to `/free`; do not collect an email yet.
+   791→8. Compact FAQ preview linked to `/faq`.
+   792→
+   793→Suggested tone: direct, technically literate, confident, and concise. Avoid hype such as “industry-leading,” “official,” “guaranteed hit,” “used by top producers,” or “best on the market.” Do not use lorem ipsum in the final result.
+   794→
+   795→Fixture-data rules
+   796→
+   797→Step 2 may use a small set of typed fictional presentation fixtures so the layouts can be judged. Keep them in an unmistakable location such as `src/features/catalog/fixtures` and make all consumers depend on a view-model interface that Step 3 can replace with mapped Supabase data.
+   798→
+   799→- Use fictional product titles and original locally created abstract cover treatments.
+   800→- Do not use real artists, song titles, album covers, label names, testimonials, ratings, sales counts, or downloadable audio.
+   801→- Mark fixture modules clearly as non-production data.
+   802→- Do not insert fixtures into Supabase or modify the Step 1 production schema merely for this visual step.
+   803→- Do not show a play button when no player exists.
+   804→- Use deterministic artwork variants so screenshots and tests are stable.
+   805→
+   806→Images and media
+   807→
+   808→Use local original SVG/CSS assets for the shell and fixtures. If raster images are necessary, use `next/image`, provide intrinsic dimensions or a stable fill container, define accurate `sizes`, and avoid lazy-loading the principal above-the-fold image when that harms LCP. Narrowly constrain any existing remote-image allowlist; do not add broad wildcard hosts. No externally hosted fonts, hotlinked media, base64 blobs in components, or copyrighted placeholder assets.
+   809→
+   810→Motion and interaction
+   811→
+   812→Use CSS transitions for small state changes. A subtle entrance or technical motif is acceptable only if it remains lightweight, does not delay content, does not cause layout shift, and is removed/reduced under `prefers-reduced-motion`. Avoid interval timers and continuous work on hidden tabs. The menu and disclosures must remain usable if animation is disabled.
+   813→
+   814→Performance requirements
+   815→
+   816→- Keep the page server-rendered and static where possible.
+   817→- Keep client-side JavaScript confined to small islands.
+   818→- Do not add third-party scripts, trackers, chat widgets, embedded video players, or autoplay audio.
+   819→- Use `next/font`, optimized image handling, stable dimensions, and lazy loading below the fold.
+   820→- Avoid barrel imports or dependency patterns that pull entire libraries into client bundles.
+   821→- In a production-mode local run, target Lighthouse mobile scores of at least 90 Performance, 95 Accessibility, 95 Best Practices, and 90 SEO for `/`; record the actual results rather than fabricating them.
+   822→- Treat LCP <= 2.5 seconds, INP <= 200 milliseconds, and CLS <= 0.1 at the 75th percentile as the eventual field goals. Lab measurements in this step are evidence, not a guarantee of field performance.
+   823→- If environment limits prevent Lighthouse, document the exact limitation and still inspect build output, route rendering, layout shift risks, and client boundaries.
+   824→
+   825→Metadata
+   826→
+   827→Implement honest global metadata through the App Router metadata API:
+   828→
+   829→- title template and useful default title;
+   830→- accurate short description;
+   831→- metadata base via validated public-site URL configuration;
+   832→- basic Open Graph/Twitter fallback using only local original assets;
+   833→- favicon/app icons from the original mark;
+   834→- robots behavior that prevents draft legal shells from indexing.
+   835→
+   836→Do not add product JSON-LD, sitemap catalog logic, merchant feeds, or rich product metadata yet; those belong with real data in Step 3 and later SEO work.
+   837→
+   838→Documentation deliverables
+   839→
+   840→Create or update:
+   841→
+   842→1. `docs/DESIGN_SYSTEM.md` — visual principles, palette/tokens, typography, spacing, radii, elevation, components, state behavior, responsive rules, accessibility requirements, asset rules, and instructions for replacing the temporary site name.
+   843→2. `docs/CONTENT_GUIDE.md` — voice, terminology, capitalization, product naming pattern, prohibited unsupported claims, legal/originality language, and how to refer to third-party DAWs without implying affiliation.
+   844→3. `docs/ROADMAP.md` — mark Step 2 complete only after its acceptance checks pass; leave Steps 3–9 pending.
+   845→4. README only where required to explain new commands, route previews, or environment configuration.
+   846→
+   847→Keep documentation aligned with actual code. Do not claim a Lighthouse score, accessibility conformance, or completed route that was not verified.
+   848→
+   849→Testing and visual QA
+   850→
+   851→Use the repository's existing test tools. Add focused dependencies only when necessary and keep them in development dependencies.
+   852→
+   853→At minimum, add or update tests for:
+   854→
+   855→- price formatting across at least two currencies/locales relevant to the component contract;
+   856→- button/link variants and disabled behavior;
+   857→- header navigation destinations;
+   858→- opening, keyboard traversal, Escape closing, and focus return for the mobile menu;
+   859→- skip-link behavior;
+   860→- rendering every fixture-driven card without nested interactive controls;
+   861→- all visible internal links on the core shell resolving to a non-404 route;
+   862→- home, catalog, free, cart, and not-found presentation at mobile and desktop viewport sizes;
+   863→- no uncaught browser errors, React hydration errors, or failed resource requests on core pages;
+   864→- automated accessibility scanning on `/`, `/catalog`, and the open mobile menu, with no serious or critical violations.
+   865→
+   866→Use Playwright (or the already configured equivalent) to capture review screenshots at least at 375x812, 768x1024, and 1440x900 for the home page, plus the open mobile menu. Store test snapshots/artifacts according to repository convention; do not commit huge transient reports unless the repository intentionally tracks them. Actually inspect the screenshots for clipping, awkward wraps, low contrast, overlap, and excessive empty space.
+   867→
+   868→Required verification before completion
+   869→
+   870→Run the exact scripts defined by the repository for:
+   871→
+   872→- formatting check;
+   873→- lint;
+   874→- TypeScript type checking;
+   875→- unit/component tests;
+   876→- browser/end-to-end and accessibility tests;
+   877→- production build;
+   878→- any Step 1 database/RLS regression suite affected by your edits.
+   879→
+   880→Then run a production-mode preview and inspect all Step 2 routes. If a command fails, fix the cause or report the exact blocker. Do not delete, skip, soften, or rewrite a meaningful test solely to obtain green output.
+   881→
+   882→Acceptance criteria
+   883→
+   884→Step 2 is complete only when all of the following are true:
+   885→
+   886→1. Step 1 checks still pass, or a precisely described environment limitation is the only unverified item.
+   887→2. The implementation is visibly original and follows the documented design system.
+   888→3. The home page and required route shells render correctly from 320 through 1920 pixels without unintended horizontal overflow.
+   889→4. Header, mobile navigation, skip link, and all visible links are keyboard accessible and lead to valid destinations.
+   890→5. WCAG 2.2 AA contrast targets are met and automated core-page scans contain no serious or critical issues.
+   891→6. There are no hydration warnings, uncaught console errors, or knowingly broken resource requests on core routes.
+   892→7. Fixture content is fictional, typed, deterministic, isolated, and never inserted into the production database.
+   893→8. No fake player, checkout, download, email form, review, filter, search, or admin behavior has been introduced.
+   894→9. No customer authentication or public admin link has been added.
+   895→10. No secret, third-party copyrighted asset, private deliverable, or real customer data is committed.
+   896→11. Images/fonts are locally controlled and optimized; client-side code is limited to justified interaction islands.
+   897→12. The production build and the configured automated test suite pass.
+   898→13. Documentation matches the implemented system and keeps all Step 3+ work explicitly pending.
+   899→
+   900→Final response format
+   901→
+   902→When finished, provide:
+   903→
+   904→1. a concise implementation outcome;
+   905→2. the final visual direction and major UX decisions;
+   906→3. important files and routes created or changed;
+   907→4. exact verification commands and their pass/fail results;
+   908→5. actual Lighthouse/accessibility results if measured;
+   909→6. screenshot paths or review artifacts;
+   910→7. any Step 1 fixes, assumptions, or remaining blockers;
+   911→8. explicit confirmation that live catalog data, audio, admin, cart persistence, Stripe, orders, delivery, and deployment were not implemented;
+   912→9. the recommended next prompt title: `Step 3 — Live catalog, product pages, filters, SEO, and audio previews`.
+   913→
+   914→Stop after Step 2. Do not proceed to Step 3.
+   915→
+   916→Step 2 validation references
+   917→
+   918→Next.js image optimization
+   919→
+   920→Next.js font optimization
+   921→
+   922→Next.js production checklist
+   923→
+   924→WCAG 2.2 quick reference
+   925→
+   926→Web Vitals thresholds
+   927→
+   928→shadcn/ui documentation

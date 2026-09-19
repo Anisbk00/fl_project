@@ -14,6 +14,10 @@ import { z } from "zod";
  * refusing to run privileged operations if the configuration is missing or
  * malformed. We never print secret values; errors describe which variable is
  * missing, never its contents.
+ *
+ * NOTE: there is NO local database and NO Prisma. Supabase is the only data
+ * platform. The only server-side data configuration is the Supabase URL +
+ * secret key (plus the publishable pair, which is in public.ts).
  */
 
 const serverEnvSchema = z.object({
@@ -31,9 +35,6 @@ const serverEnvSchema = z.object({
     .trim()
     .or(z.literal(""))
     .default(""),
-  DATABASE_URL: z
-    .string()
-    .min(1, "DATABASE_URL is required"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -45,7 +46,6 @@ function readServerEnv(): ServerEnv {
   const parsed = serverEnvSchema.safeParse({
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
-    DATABASE_URL: process.env.DATABASE_URL,
   });
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -58,7 +58,7 @@ function readServerEnv(): ServerEnv {
 
 /**
  * Returns the validated server environment. Throws if required server
- * variables are missing or malformed. Never logs the returned values.
+ * variables are malformed. Never logs the returned values.
  */
 export function getServerEnv(): ServerEnv {
   return readServerEnv();

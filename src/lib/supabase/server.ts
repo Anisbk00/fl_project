@@ -1,6 +1,7 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { publicEnv } from "@/lib/env/public";
+import type { Database } from "@/types/database";
 
 /**
  * Cookie-aware Supabase server client.
@@ -37,7 +38,7 @@ export function createSupabaseServerClient(cookies: ServerCookieAdapter) {
       "Cookie-aware Supabase server client is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY. (Supabase is not linked in the Step 1 sandbox.)",
     );
   }
-  return createServerClient(url, key, {
+  return createServerClient<Database>(url, key, {
     cookies: {
       getAll() {
         return cookies.getAll();

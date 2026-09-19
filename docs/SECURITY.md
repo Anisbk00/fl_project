@@ -8,8 +8,8 @@ and the future payment/download security requirements.
 
 | Asset | Sensitivity | Where it lives |
 | --- | --- | --- |
-| Admin allow-list (`admin_users`) | High — reveals admin identities | Postgres; RLS blocks public reads. In sandbox: `AdminUser` model; never returned by public reads. |
-| Catalog metadata (products, genres, plugins) | Public when published + rights-cleared; private when draft/archived/unreviewed | Postgres / Prisma |
+| Admin allow-list (`admin_users`) | High — reveals admin identities | Supabase Postgres; RLS blocks anon/authenticated reads entirely (only `is_admin()` SECURITY DEFINER consults it). |
+| Catalog metadata (products, genres, plugins) | Public when published + rights-cleared; private when draft/archived/unreviewed | Supabase Postgres (RLS-protected) |
 | Public preview media | Public by design | `product-public` bucket / `product_media` rows |
 | Private deliverables | High — paid product | `product-private` bucket / `product_deliverables` rows (never in public reads) |
 | Customer payment/delivery data | High — PII | Stripe + a hashed download-token table (Step 6). Never logged in full. |
@@ -42,7 +42,7 @@ and the future payment/download security requirements.
    `dangerouslySetInnerHTML`.
 6. **Never log credentials, full payment/customer records, tokens, or private
    storage URLs.** `src/lib/security/redact.ts` scrubs known secrets and
-   common secret patterns from log/error input. Prisma query logging is off.
+   common secret patterns from log/error input. No SQL query logging is enabled.
 
 ## 4. Threat model and controls
 
@@ -58,7 +58,7 @@ and the future payment/download security requirements.
 | XSS via product descriptions | Safe Markdown only; sanitize; never raw HTML. |
 | Malicious/invalid uploads | File allow-list + size limits + MIME checks + SHA-256 checksums + versioned immutable paths (Step 4). |
 | Abusive checkout/download/API traffic | Rate limits backed by durable shared state (NOT a fake in-memory limiter — see `rate-limit.ts`); bot controls (Step 5/8). |
-| Sensitive data in logs | `redact.ts`; Prisma query log off; structured redacted logs (Step 8). |
+| Sensitive data in logs | `redact.ts`; no query logging; structured redacted logs (Step 8). |
 | Dependency / supply-chain | Committed lockfile; `bun audit`; CI dependency review (Step 8). |
 
 ## 5. Secret handling
@@ -67,9 +67,10 @@ and the future payment/download security requirements.
   git-ignored.
 - Public env (`NEXT_PUBLIC_*`) is validated eagerly with safe development
   defaults so the app builds/boots without real secrets.
-- Server env (`SUPABASE_SECRET_KEY`, `SUPABASE_URL`, `DATABASE_URL`) is
-  validated **lazily** when a privileged operation needs it, so the build
-  succeeds without secrets while privileged operations refuse to run if
+- Server env (`SUPABASE_SECRET_KEY`, `SUPABASE_URL`) is
+  validated **lazily** when a privileged operation needs it. There is NO local
+  database and NO `DATABASE_URL` — Supabase is the only data platform. The
+  build succeeds without secrets while privileged operations refuse to run if
   misconfigured.
 - The secret key is imported only inside `src/lib/supabase/privileged.ts`
   (server-only). It never appears in a client bundle, log, URL, or error.
@@ -86,15 +87,20 @@ and the future payment/download security requirements.
   email or a browser-supplied claim.
 - **TOTP MFA / AAL2 is required** for admin access before production launch
   (Step 4).
-- In this sandbox, `requireAdmin(userId)` queries the `AdminUser` allow-list and
-  throws `UnauthorizedError` otherwise. Every catalog mutation calls it first.
+- `requireAdmin(adminClient)` calls the `is_admin()` SECURITY DEFINER RPC on
+  the authenticated admin client (so `auth.uid()` is set) and throws
+  `UnauthorizedError` otherwise. Every catalog mutation calls it first. The
+  privileged (secret) client is never used for catalog mutations — RLS is the
+  real boundary.
 
 ## 7. Row-Level Security rules (production mapping)
 
-In production, RLS + explicit grants implement the same matrix proven in code
-here. RLS is enabled on every table in the exposed schema; broad defaults are
-revoked; only required operations are granted back. Policies are written per
-operation (not one opaque `FOR ALL`).
+RLS + explicit grants ARE the access matrix (this is not a local-DB
+approximation — Supabase is the only data platform). The application
+data-access layer applies the identical filter as defense-in-depth. RLS is
+enabled on every table in the exposed schema; broad defaults are revoked;
+only required operations are granted back. Policies are written per operation
+(not one opaque `FOR ALL`).
 
 | Table | anon SELECT | non-admin SELECT | admin SELECT | anon/non-admin INSERT/UPDATE/DELETE | admin mutation |
 | --- | --- | --- | --- | --- | --- |
@@ -105,15 +111,18 @@ operation (not one opaque `FOR ALL`).
 | `product_deliverables` | **denied entirely** | **denied** | all | denied | allowed |
 | `admin_users` | **denied** | **denied** | all (and only via `is_admin()`) | denied | allowed |
 
-The publication rule is additionally enforced by a Postgres CHECK constraint:
+The publication rule is enforced by a Postgres CHECK constraint
+(`products_publication_check` in `0001_catalog_schema.sql`):
 `lifecycle = 'published'` ⇒ `rights_status IN ('original','licensed')` AND
-`published_at IS NOT NULL` AND `price >= 0` AND `currency IS NOT NULL` AND
-required public metadata present. In the sandbox this is enforced by
-`assertPublishable()` in the data-access write path + the Zod schema.
+`published_at IS NOT NULL` AND `price >= 0` AND `price_currency IS NOT NULL` AND
+required public metadata present. `assertPublishable()` in the data-access
+write path + the Zod schema apply the same rule as defense-in-depth before the
+DB is ever reached.
 
 The `is_admin()` function is a `SECURITY DEFINER` with an empty/fixed
 `search_path`, least-privilege EXECUTE grants, consulting `auth.uid()` against
-`admin_users`. In the sandbox it is `src/lib/auth/is-admin.ts`.
+`admin_users` (see `0002_rls_and_admin.sql`). The application calls it via
+`adminClient.rpc('is_admin')` in `src/lib/auth/is-admin.ts`.
 
 ## 8. Storage access control (production)
 

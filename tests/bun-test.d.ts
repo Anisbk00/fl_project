@@ -50,10 +50,17 @@ declare module "bun:test" {
 
   export function describe(name: string, fn: SuiteFn): void;
   export function describe(name: string, fn: () => void): void;
+  export namespace describe {
+    function skip(name: string, fn: SuiteFn): void;
+    function skipIf(condition: boolean): (name: string, fn: SuiteFn) => void;
+    function only(name: string, fn: SuiteFn): void;
+    function todo(name: string): void;
+  }
   export const it: {
     (name: string, fn: TestFn): void;
     only(name: string, fn: TestFn): void;
     skip(name: string, fn: TestFn): void;
+    skipIf(condition: boolean): (name: string, fn: TestFn) => void;
     todo(name: string): void;
   };
   export const test: typeof it;

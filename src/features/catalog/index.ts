@@ -1,10 +1,15 @@
 /**
  * Catalog feature barrel. Public reads + admin writes are the ONLY sanctioned
  * way to touch catalog data. Import from `@/features/catalog`, not from the
- * underlying Prisma client, in application code.
+ * underlying Supabase client, in application code.
  *
  * `data-access` imports `server-only`, so importing catalog mutations from a
  * Client Component fails the build.
+ *
+ * Public reads use the publishable client (RLS-protected). Admin mutations
+ * take an authenticated `AdminClient` (obtained from the cookie server client
+ * in Step 4) and call `requireAdmin` (the `is_admin()` RPC) before writing —
+ * RLS is the real boundary; the application never compensates for it.
  */
 export {
   listPublishedProducts,
@@ -22,6 +27,10 @@ export {
   type PublicGenre,
   type PublicPlugin,
   type PublicMedia,
+  type PublicGenreRef,
+  type PublicPluginRef,
+  type PublicProductGenre,
+  type PublicProductPlugin,
   type AddDeliverableInput,
 } from "./data-access";
 
