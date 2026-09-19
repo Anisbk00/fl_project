@@ -14,8 +14,6 @@
 export {
   listPublishedProducts,
   getPublishedProductBySlug,
-  listGenres,
-  listPlugins,
   listAllProductsForAdmin,
   createProduct,
   publishProduct,
@@ -66,3 +64,49 @@ export {
   type RightsStatus,
   type CreateProductInput,
 } from "./schema";
+
+// Step 3 — live catalog repository, URL params, sort, SEO, safe markdown.
+export {
+  isCatalogReady,
+  CatalogUnavailableError,
+  searchCatalog,
+  getProductDetail,
+  getRelatedProducts,
+  listFreeProducts,
+  listFeaturedProducts,
+  listGenres,
+  listPlugins,
+  type CatalogResult,
+} from "./repository";
+
+export {
+  PAGE_SIZE,
+  SORT_KEYS,
+  SORT_LABELS,
+  catalogParamsSchema,
+  parseCatalogParams,
+  serializeCatalogParams,
+  withParam,
+  withPage,
+  hasActiveFilters,
+  toRpcParams,
+  type CatalogParams,
+  type CatalogRpcParams,
+  type SortKey,
+} from "./url-params";
+
+export { isValidSortKey, resolveSortKey, SORT_OPTIONS } from "./sort";
+
+export {
+  siteUrl,
+  coverUrl,
+  productCanonical,
+  catalogCanonical,
+  freeCanonical,
+  breadcrumbJsonLd,
+  productJsonLd,
+  serializeJsonLd,
+} from "./seo";
+
+export { SafeMarkdown, sanitizeUrl } from "./markdown";
+export { PRODUCT_TYPE_LABELS, formatBytes, formatDuration, type ProductCardVM, type ProductDetailVM, type ProductMediaVM } from "./view-models";

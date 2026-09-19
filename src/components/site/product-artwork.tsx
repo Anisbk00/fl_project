@@ -38,6 +38,46 @@ export function ProductArtwork({
   seed,
   className,
   label,
+  coverUrl,
+}: {
+  seed: string;
+  className?: string;
+  label?: string;
+  /** Live public cover URL. When provided, an <img> renders; else abstract SVG. */
+  coverUrl?: string | null;
+}) {
+  if (coverUrl) {
+    return (
+      <div
+        className={cn(
+          "relative aspect-[4/3] w-full overflow-hidden bg-surface-inset",
+          className,
+        )}
+      >
+        <img
+          src={coverUrl}
+          alt={label ? `${label} — cover` : "Product cover"}
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+          // If the live cover fails (404/expired), fall back to abstract art.
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
+        />
+        <AbstractWaveform seed={seed} className="absolute inset-0" />
+      </div>
+    );
+  }
+  return (
+    <AbstractWaveform seed={seed} className={cn("aspect-[4/3] w-full bg-surface-inset", className)} label={label} />
+  );
+}
+
+function AbstractWaveform({
+  seed,
+  className,
+  label,
 }: {
   seed: string;
   className?: string;

@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/site/badge";
 import { Price } from "@/components/site/price";
 import { ProductArtwork } from "@/components/site/product-artwork";
+import { AudioPreview } from "@/components/site/audio-preview";
+import { coverUrl, publicMediaUrl } from "@/features/catalog/seo";
 import {
   PRODUCT_TYPE_LABELS,
   formatBytes,
@@ -11,14 +13,16 @@ import {
 } from "@/features/catalog/view-models";
 
 /**
- * Product card presentation component. The entire card is a single Next <Link>
- * (the product title and artwork are inside it) — there are NO nested
- * interactive controls, per the accessibility contract. Secondary actions
- * (e.g. add-to-cart) belong to Step 5 and will be separate siblings, not
- * nested inside this card.
+ * Product card presentation component.
  *
- * The card surfaces useful technical metadata before purchase: product type,
- * DAW/version, BPM, key, duration, formats, file size, price.
+ * Accessibility contract: the artwork and the title are SEPARATE sibling links
+ * to the product detail page; the audio preview control is a separate sibling
+ * too. There are NO nested interactive elements (no <button>/<input> inside an
+ * <a>). This keeps the card keyboard-operable and avoids nested-focus issues.
+ *
+ * The card surfaces useful truthful metadata before purchase: product type,
+ * DAW/version, BPM, key, duration, formats, file size, price. A compact audio
+ * preview control renders ONLY when public preview audio exists.
  */
 export function ProductCard({
   product,
@@ -37,26 +41,36 @@ export function ProductCard({
     product.totalSizeBytes ? formatBytes(product.totalSizeBytes) : null,
   ].filter(Boolean) as string[];
 
+  const cover = coverUrl(product);
+  const audioUrl = publicMediaUrl(product.audioPreviewPath);
+
   return (
-    <Link
-      href={product.href}
-      aria-label={`${product.title} — ${PRODUCT_TYPE_LABELS[product.productType]}`}
+    <article
       className={cn(
         "card-lift group flex flex-col overflow-hidden rounded-xl border border-line bg-surface",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--canvas)]",
+        "focus-within:ring-2 focus-within:ring-[var(--focus)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--canvas)]",
         className,
       )}
     >
-      <div className="relative">
-        <ProductArtwork seed={product.artworkSeed} />
+      <Link
+        href={product.href}
+        aria-label={`${product.title} — ${PRODUCT_TYPE_LABELS[product.productType]}`}
+        className="relative block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--canvas)]"
+      >
+        <ProductArtwork seed={product.artworkSeed} coverUrl={cover} label={product.title} />
         <div className="absolute left-2 top-2 flex flex-wrap gap-1">
           <Badge tone="brand">{PRODUCT_TYPE_LABELS[product.productType]}</Badge>
           {product.free ? <Badge tone="success">Free</Badge> : null}
         </div>
-      </div>
+      </Link>
       <div className="flex flex-1 flex-col gap-2 p-4">
-        <h3 className="t-heading-3 text-ink group-hover:text-brand transition-colors duration-[var(--duration-base)]">
-          {product.title}
+        <h3 className="t-heading-3 text-ink">
+          <Link
+            href={product.href}
+            className="rounded hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] transition-colors duration-[var(--duration-base)]"
+          >
+            {product.title}
+          </Link>
         </h3>
         {product.genres?.length ? (
           <p className="t-caption">{product.genres.join(" · ")}</p>
@@ -69,19 +83,25 @@ export function ProductCard({
           </ul>
         ) : null}
         {product.formats?.length ? (
-          <p className="t-caption text-ink-muted">
-            {product.formats.join(" · ")}
-          </p>
+          <p className="t-caption text-ink-muted">{product.formats.join(" · ")}</p>
         ) : null}
-        <div className="mt-auto pt-2">
+        <div className="mt-2 flex items-end justify-between gap-3">
           <Price
             minorUnits={product.price}
             currency={product.currency}
             locale={locale}
             compareAtMinorUnits={product.compareAtPrice}
           />
+          {audioUrl ? (
+            <AudioPreview
+              src={audioUrl}
+              id={`card-${product.slug}`}
+              label={product.title}
+              variant="compact"
+            />
+          ) : null}
         </div>
       </div>
-    </Link>
+    </article>
   );
 }
