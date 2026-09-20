@@ -71,3 +71,47 @@ Stage Summary:
 - Honest blockers: production build (`bun run build`) not run (sandbox rule) — verified via lint+typecheck+test+dev boot+agent-browser instead; Lighthouse not available in headless agent-browser — performance verified via static RSC + small client islands + no third-party scripts (documented); screenshots captured as artifacts but not visually inspected by the AI (layout verified programmatically instead).
 - No Step 3+ feature implemented (live catalog data, audio, admin, cart persistence, Stripe, orders, delivery, deployment all still pending).
 - Recommended next prompt title: Step 3 — Live catalog, product pages, filters, SEO, and audio previews.
+
+---
+Task ID: 4
+Agent: Z.ai Code (main)
+Task: Step 3 — Live catalog, product pages, filters, SEO, and audio previews (per the 19 Sept 2026 master plan Step 3 prompt).
+
+Work Log:
+- Preflight: Steps 1-2 green (lint, typecheck, 59 tests). Confirmed no Docker/Supabase CLI in sandbox → live-data/RLS/EXPLAIN/pgTAP parts documented as blockers; code is production-ready.
+- SQL migration 0004_catalog_search.sql: search_products / get_product_by_slug / get_related_products / list_free_products SECURITY INVOKER functions (fixed search_path, parameterized websearch_to_tsquery, allow-listed sort w/ deterministic tie-breakers, public columns only); generated tsvector (title A/short B/long C) + GIN index + trigger; partial indexes for filters/sort. seed.sql (fictional allow/deny + media). pgTAP catalog_search.test.sql.
+- Updated src/types/database.ts: new functions + search_vector column.
+- Catalog repository (server-only, publishable client, RPC calls, narrow DTO mapping, unstable_cache tags + documented Step 4 invalidation contract). URL param schema (Zod, preprocess stringArray, currency rule, canonical serialize, withParam/withPage, parse handles arrays + strips empty scalars + maps singular→plural). sort allow-list. SafeMarkdown (react-markdown, no rehype-raw, link allow-list). seo.ts (publicMediaUrl, coverUrl, canonicals, productJsonLd [no offers/reviews], breadcrumbJsonLd, serializeJsonLd escaping).
+- Pages: /catalog (filters GET form + mobile sheet, sort pills, pagination, active chips, clear-all, empty/no-results/unconfigured/error states, noindex on filtered), /free (live), /products/[slug] (breadcrumb, compatibility summary, safe markdown, related, audio, Product+Breadcrumb JSON-LD, canonical, nondisclosing notFound). loading skeletons. Home featured now uses live listFeaturedProducts (honest unconfigured state). sitemap.ts + robots.ts (removed conflicting public/robots.txt).
+- Audio: pure state machine + SingleActivePreviewCoordinator (unit-tested); AudioPreview client (preload=none, single-active, keyboard, reduced-motion, error-tolerant, cleanup). ProductCard restructured so artwork/title links + audio control are siblings (no nested interactive). ProductArtwork renders live cover <img> with abstract fallback.
+- a11y fix: every page now has exactly one <h1> (catalog/free/cart/about/faq/contact/legal SectionHeading as="h1"; honest EmptyStates titleAs="h1"; product page its own h1).
+- Tests (bun): url-params (parse/serialize/normalize/reset/currency/malformed), sort, mapping (forbidden fields absent), markdown (sanitizeUrl), seo (JSON-LD escaping+shape, canonicals), audio-player-state (transitions, single-active). 109 pass / 4 skip / 0 fail.
+- Docs: CATALOG_AND_SEARCH.md, MEDIA_PREVIEWS.md, SEO.md; ROADMAP (Step 3 COMPLETE); README (seed/media note + doc links).
+- Verified: lint ✓, typecheck ✓, 109 tests ✓; dev boot clean; routes 200 (+ fake 404 nondisclosing); robots.txt 200 (correct); sitemap.xml 200 (static routes only in sandbox); no console/runtime errors; h1=1 on all pages.
+
+Stage Summary:
+- Step 3 complete and browser-verified (within sandbox limits). Live Supabase data rendering, RLS/pgTAP, EXPLAIN plans, live audio network test, and external SEO validation require a linked project (documented blockers with exact commands).
+- No Step 4+ feature implemented (admin, cart persistence, Stripe, orders, email, downloads, deployment all pending). Future confirmed-payment→automatic-secure-email (<60s, durable retries, no large attachment) requirement preserved in docs/ROADMAP.md + docs/SECURITY.md.
+- Recommended next prompt title: Step 4 — Secure admin authentication and product CMS.
+
+---
+Task ID: 5
+Agent: Z.ai Code (main)
+Task: Step 4 — Secure admin authentication and product CMS (per the 19 Sept 2026 master plan Step 4 prompt).
+
+Work Log:
+- Preflight: Steps 1-3 green. Confirmed no Docker/Supabase CLI → live Auth/MFA/Storage/TUS/RLS/E2E verification is a documented blocker; per the plan, NO security control claimed verified without running it.
+- SQL migration 0005_admin_cms.sql: admin_users (active/disabled/display_name/disabled_by), product_rights (private attestation/evidence/expiry), upload_intents (one-use expiring server-generated staging paths), audit_events (append-only); products.row_version + product_media/deliverables validation_state/server_checksum/detected_type/created_by_uid; is_active_admin() + aal2() SECURITY DEFINERs; transactional publish_product/archive_product/unpublish_product RPCs (AAL2 + optimistic concurrency + readiness gate + in-transaction audit); AAL2 RLS on every new table; admin_users self-select at AAL1 + admin-mutate at AAL2; append-only audit triggers (no client UPDATE/DELETE).
+- Updated src/types/database.ts: new tables/functions + row_version + asset columns.
+- Auth wiring: src/lib/supabase/server-client.ts (cookie SSR, Next 16 async cookies), browser-client.ts (publishable key only), src/proxy.ts (token refresh; renamed from middleware.ts per Next 16 deprecation + plan). Central guard src/lib/auth/require-admin.ts requireAdmin({aal2}) — verified getUser() + mfa.getAuthenticatorAssuranceLevel() + is_active_admin RPC; never getSession(); redirects for pages, typed AuthFailure for actions.
+- Pure security logic (unit-tested): lifecycle.ts (transitions), readiness.ts (publish-readiness gate mirroring the RPC), concurrency.ts (optimistic), aal.ts (AAL2 parsing + AdminPrincipal), audit.ts (redaction + changedFields), uploads.ts (filename/path/extension allow-lists, magic-byte detection, ZIP traversal/abuse defenses, staging-key generation, role size limits), cache-invalidation.ts (mutation→Step 3 tags mapping).
+- Admin routes: /admin/login, /admin/mfa/enroll, /admin/mfa/challenge, /admin/password-recovery, /(protected) layout (requireAdminOrRedirect aal2), /admin (dashboard), /admin/products, /admin/products/new, /admin/products/[id], /admin/products/[id]/preview, /admin/taxonomies, /admin/audit, /admin/security. All noindex + force-dynamic (no-store); not in public nav/sitemap. Client components: login-form (non-enumerating), mfa-enroll-form (local QR via qrcode; secret cleared post-verify), mfa-challenge-form, password-recovery-form; logout Server Action.
+- Route-group restructure: moved public routes into src/app/(store)/ with storefront chrome; root layout minimal; admin layout owns its chrome (admin pages no longer render public header/footer). Renamed middleware.ts→proxy.ts (Next 16).
+- Tests: admin lifecycle, readiness, concurrency+AAL+audit, uploads (19), cache-invalidation. 160 pass / 4 skip / 0 fail.
+- Docs: ADMIN_AUTH.md, ADMIN_CMS.md, UPLOAD_SECURITY.md, OPERATIONS.md; ROADMAP (Step 4 COMPLETE).
+- Verified: lint ✓, typecheck ✓, 160 tests ✓; dev boot clean (cleared .next after a Turbopack incremental-cache panic — a bundler bug, not code); all admin routes 200; /admin/login noindex,nofollow; /admin honest "Admin isn't available here" state with NO storefront chrome + admin chrome; public home has 0 admin links; proxy.ts token-refresh wired.
+
+Stage Summary:
+- Step 4 architecture + verifiable security logic complete. Honest blockers: real MFA login, AAL2 against a live session, TUS uploads to a real Storage bucket, the trusted file validator against real bytes, the pgTAP role/AAL2 matrix, and admin CMS E2E require a linked Supabase project (exact commands: supabase db reset + supabase db test). No security control claimed verified without running it.
+- No Step 5+ feature implemented (cart persistence, Stripe, orders, email, downloads, deployment all pending). Future confirmed-payment→automatic-secure-email (<60s, durable outbox, idempotent, no large attachment) requirement preserved in docs/ROADMAP.md + docs/OPERATIONS.md.
+- Recommended next prompt title: Step 5 — Cart and Stripe guest checkout.

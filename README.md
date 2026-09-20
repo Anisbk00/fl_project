@@ -84,6 +84,17 @@ bun run db:types   # writes types to stdout; redirect to src/types/database.gene
 The data-access layer (`src/features/catalog/data-access.ts`) derives its
 public row shapes from the `Database` type.
 
+## Local catalog seed & media (Step 3)
+
+`supabase db reset` applies all migrations AND `supabase/seed.sql` — a
+deterministic fictional dataset (allow/deny rows, genres, plugins, public
+cover/audio references, private deliverables). It is dev/test-only and never
+runs against production. Local media seeding (a tiny synthetic 1-second
+audio clip + original abstract SVG covers, generated in-process — no large
+binaries committed) would be done via `bun scripts/seed-local-media.ts`
+(documented; not required for the schema). With no linked project, catalog
+pages render an honest "not available here" state.
+
 ## Linking a future hosted Supabase project (DO NOT commit secrets)
 
 1. Create a Supabase project; enable the current `sb_publishable_...` /
@@ -139,11 +150,18 @@ data, checkout, and delivery arrive in later steps):
 - [`docs/SECURITY.md`](./docs/SECURITY.md) — assets, actors, trust boundaries,
   threats, controls, secret handling, RLS rules, future payment/download
   requirements.
-- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — Steps 2–9 (Step 2 complete; 3–9 pending).
+- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — Steps 2–9 (Steps 1–3 complete; 4–9 pending).
 - [`docs/DESIGN_SYSTEM.md`](./docs/DESIGN_SYSTEM.md) — Step 2 visual principles,
   palette/tokens, typography, components, state behavior, responsive & a11y rules.
 - [`docs/CONTENT_GUIDE.md`](./docs/CONTENT_GUIDE.md) — Step 2 voice, terminology,
   product naming, prohibited claims, third-party DAW reference rules.
+- [`docs/CATALOG_AND_SEARCH.md`](./docs/CATALOG_AND_SEARCH.md) — Step 3 catalog
+  data layer, URL contract, search/ranking, filters, sorting, pagination,
+  currency rule, SQL functions/indexes, caching/invalidation, empty/error behavior.
+- [`docs/MEDIA_PREVIEWS.md`](./docs/MEDIA_PREVIEWS.md) — Step 3 public/private
+  media boundary, preview types, loading policy, player behavior, encoding, a11y.
+- [`docs/SEO.md`](./docs/SEO.md) — Step 3 canonical/indexing, metadata,
+  sitemap/robots, JSON-LD truthfulness/escaping, validation, no-fake-ratings rule.
 - [`docs/DECISIONS.md`](./docs/DECISIONS.md) — decision record (hosted Stripe
   Checkout, guest checkout, private Supabase delivery storage, webhook-authoritative
   fulfillment).

@@ -30,6 +30,8 @@ const cardRow: CardRow = {
 
 const detailRow: DetailRow = {
   ...cardRow,
+  lifecycle: "published",
+  rights_status: "original",
   long_description: "## Inside\nFull session.",
   seo_title: "Vector Drift — FL Studio Project",
   seo_description: "Original FL Studio project.",

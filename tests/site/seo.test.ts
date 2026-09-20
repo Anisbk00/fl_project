@@ -34,7 +34,7 @@ const product: ProductDetailVM = {
 
 describe("serializeJsonLd (escaping)", () => {
   it("escapes <, >, & to unicode so stored content cannot break out of <script>", () => {
-    const out = serializeJsonLd({ name: "</script><b>x" });
+    const out = serializeJsonLd({ name: "</script>&<b>x" });
     expect(out).not.toContain("</script>");
     expect(out).not.toContain("<");
     expect(out).toContain("\\u003c");
