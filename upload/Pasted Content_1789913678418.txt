@@ -1,0 +1,1300 @@
+You are implementing Step 5 of an existing production-oriented application: Durable guest cart and Stripe-hosted checkout.
+
+Do not begin by writing code. First inspect the entire repository, current git status, installed versions, package scripts, Supabase migrations and generated types, RLS and Storage policies, environment validation, route tree, public catalog repository, admin authorization layer, test suites, and every file under `docs/`. Read the actual completion reports for Steps 1–4 and verify their claims against the code. Preserve intentional existing work and never discard unrelated changes. Then state a concise implementation plan and execute it completely.
+
+PROJECT CONTEXT AND LOCKED DECISIONS
+
+This is a worldwide digital-product store for music producers. It sells only original or verifiably licensed DAW project files, educational remakes, rendered stems, WAV/sample packs, and optional free products. It uses the existing Next.js App Router and TypeScript application, Supabase for Postgres/Auth/Storage, Stripe-hosted Checkout for one-time payments, and Vercel for the eventual deployment. Follow the exact stable versions and conventions installed in the repository instead of rebuilding the stack.
+
+The following decisions are non-negotiable:
+
+1. Buyers never create an application account and never sign in. Checkout is guest-only. Supabase Auth remains admin-only.
+2. The cart and every Checkout Session are priced entirely from trusted current database records. The browser may submit product identifiers and a cart version, but never an authoritative title, price, currency, tax, discount, asset path, entitlement, or payment state.
+3. Stripe hosts the payment page. The application never renders or accepts card fields and never handles card numbers, CVCs, bank credentials, or wallet credentials.
+4. Use one-time `payment` mode. Do not add subscriptions, saved application payment methods, customer accounts, invoices, coupons, promotion codes, buy-now-pay-later promises, or a custom payment form unless this prompt explicitly requires them.
+5. Eligible payment methods and wallets are managed dynamically by Stripe according to merchant configuration, transaction currency/amount, customer location, device, and method eligibility. Do not hard-code a static `payment_method_types` list or promise that every method appears in every country.
+6. Stripe webhooks—not the browser, success URL, query string, or client callback—are the payment authority. Verify the signature against the untouched raw request body.
+7. Handle immediate and delayed payment methods. `checkout.session.completed` with an unpaid/processing payment is not permission to deliver. A delayed payment becomes paid only after authoritative success, including `checkout.session.async_payment_succeeded` and a current Stripe Session whose payment status is paid.
+8. Event delivery can be duplicated, concurrent, delayed, and out of order. Database transitions and Stripe API calls must be idempotent and recoverable.
+9. A paid order stores immutable commercial and product/deliverable-version references so a later product edit cannot change what the buyer purchased. This step creates no download grant and exposes no private file.
+10. Paid deliverables remain private. A public/browser response must never contain a private bucket key, internal deliverable path, signed URL, rights evidence, or secret.
+11. Step 6 will automatically create download grants and a durable delivery-email job in the same authoritative paid transition. After Stripe confirms an immediate or delayed payment, the buyer must receive a secure, expiring package-access link automatically, normally within 60 seconds, without admin intervention. The email must not contain the large package as an attachment. Preserve a clean atomic extension point for that work.
+12. The browser success page must never create an order, mark an order paid, create a grant, enqueue an email, or trigger fulfillment. It is a read-only status experience.
+13. Free-product acquisition is not sent through paid Stripe Checkout. The free-product/email funnel remains a later step. Do not add a zero-value workaround here.
+14. Only published, rights-cleared, currently purchasable products with a ready immutable private deliverable version may enter checkout.
+15. Use integer minor units and explicit lowercase ISO currency codes everywhere. Never use floating-point money.
+16. Do not enable live charges at the end of Step 5. Add a fail-closed live-payment release gate until Step 6 fulfillment, approved legal policies, tax configuration, production secrets, monitoring, and the final release checklist are complete. Stripe sandbox/test-mode checkout must work fully.
+17. Do not claim tax, consumer-law, payment-method, webhook, refund, or security configuration is production-ready unless it was actually configured and verified in the appropriate Stripe environment.
+
+STEP 5 GOAL
+
+Implement a durable server-backed guest cart, trusted Checkout Session creation, Stripe-hosted guest payment, a signature-verified durable webhook pipeline, idempotent payment/order state, delayed-payment support, an AAL2-protected admin order/refund workflow, reconciliation, and exhaustive Stripe sandbox tests.
+
+At the end of this step:
+
+- A visitor can add currently purchasable paid products to a persistent guest cart without creating an account.
+- The application revalidates all items and prices on the server and creates exactly one appropriate Stripe Checkout Session despite double-clicks or retries.
+- Stripe Checkout collects the buyer’s delivery email and presents only eligible configured payment methods.
+- Verified webhook events create or update one durable order with immutable item snapshots and correct payment/refund state.
+- Delayed payment, expiration, failure, refund, duplicate delivery, concurrency, and out-of-order events behave safely.
+- The success page displays only database-backed status and never performs fulfillment.
+- An AAL2 administrator can inspect orders and initiate a safe idempotent full or partial refund in Stripe test mode.
+- No package email, download token, grant, or signed customer URL exists yet.
+- Live charging remains disabled until later release gates are complete.
+
+SCOPE BOUNDARY
+
+Implement in this step:
+
+- A server-owned anonymous cart identified by a high-entropy HttpOnly cookie.
+- Accessible add, remove, clear, cart-page, cart-count, unavailable-item, changed-price, and expiry behavior.
+- Transactional cart mutations and optimistic/concurrent mutation protection.
+- Immutable checkout-attempt and checkout-attempt-item snapshots.
+- Stripe SDK setup using a pinned stable GA API version supported by the installed SDK—never a preview or beta API.
+- Stripe-hosted Checkout Session creation in one-time payment mode.
+- Stripe-collected guest email, dynamic eligible payment methods, safe success/cancel URLs, and explicit Session expiry.
+- Versioned consent plumbing and tax configuration hooks with a live-release blocker until legally reviewed.
+- A raw-body signature-verified webhook endpoint.
+- A durable private webhook inbox with idempotent processing and reconciliation.
+- Immediate and delayed payment states.
+- Private orders, immutable order items, financial totals, minimal required customer/tax data, and payment/refund identifiers.
+- A small AAL2 admin orders UI and refund operation.
+- Payment/refund audit history and safe redacted diagnostics.
+- Stripe sandbox and CLI test instructions and automated coverage.
+
+Explicitly do not implement:
+
+- Buyer registration, login, profile, saved cart across different devices, account library, or password recovery.
+- Embedded Checkout, Payment Element, Elements/card fields, a custom payment form, or a custom Express server.
+- Subscriptions, recurring billing, stored application payment methods, application-created Stripe Customers by default, promotion codes, coupons, bundles, upsells, adaptive/local currency pricing, or gift cards.
+- Free-product acquisition.
+- Download grants, customer access pages, hashed download tokens, signed customer download URLs, buyer package emails, resend functionality, or fulfillment workers.
+- Final legal wording, legal advice, a final tax-liability decision, or an automatic assumption that Stripe Tax or Managed Payments is enabled.
+- Full dispute evidence management, accounting exports, analytics, reviews, or final deployment.
+
+Small payment-risk hooks for later fulfillment are allowed: capture authoritative refund and dispute/hold state so Step 6 can deny or revoke access. Do not build a dispute-management product in this step.
+
+PRE-FLIGHT GATE
+
+Before implementation:
+
+1. Record the branch and current git status. Never reset or discard user changes.
+2. Read `README.md`, `.env.example`, all architecture/security/admin/upload/catalog documents, `package.json`, lockfile, Supabase config, migrations, seeds, generated database types, tests, and every relevant public/admin route.
+3. Run the current formatting, lint, strict TypeScript, unit/component, Supabase reset/migration/seed, generated-type drift, pgTAP/RLS/Storage, auth/admin, storefront E2E, accessibility, SEO, and production-build checks. Record the exact baseline.
+4. Verify Step 4 genuinely enforces active-admin plus AAL2 on admin reads and mutations. Refund administration must use that exact guard rather than creating another authentication system.
+5. Verify paid products cannot be published without a ready immutable private deliverable version. Determine the exact product and asset-version identifiers an order must snapshot.
+6. Verify the existing public DTO contains no private asset key and that cart rendering can use safe catalog fields without improperly expanding the public projection.
+7. Verify money and currency conventions, catalog caching, application-origin configuration, logging/redaction helpers, database transaction conventions, audit mechanism, and test tooling.
+8. Check whether any cart, order, or payment tables already exist. Extend sound equivalents instead of creating parallel models.
+9. Confirm no real Stripe key or webhook secret exists in source, git history, seed data, screenshots, fixtures, browser bundles, or logs.
+10. If earlier work is materially incomplete, fix only a small prerequisite regression or stop with a precise blocker. Do not weaken RLS, admin MFA, publication gates, or upload security to proceed.
+
+TRUST BOUNDARY AND HIGH-LEVEL ARCHITECTURE
+
+Use these separate records and responsibilities:
+
+- Guest cart: mutable product-ID list owned through possession of a random cookie token, with no buyer PII and no trusted browser-supplied price.
+- Checkout attempt: immutable server snapshot of one exact cart version, current product versions, prices, currency, license/policy versions, and selected ready deliverable asset versions. It owns the outbound Stripe idempotency key.
+- Stripe Checkout Session: hosted payment interaction containing only opaque internal references in metadata/client-reference fields and trusted line items generated from the checkout attempt.
+- Webhook inbox: durable receipt of each signature-verified Stripe event before complex processing, unique by event ID, private, retryable, and safe under duplicate or concurrent delivery.
+- Order: local source of truth for application payment and fulfillment decisions after reconciling a verified event with current Stripe state and its matching checkout attempt.
+- Order items: immutable commercial and product/deliverable-version snapshots. They are not download grants.
+- Refund records: idempotent requests and authoritative Stripe refund outcomes linked to an order.
+
+The browser talks only to same-origin cart, checkout, and status endpoints or Server Actions. It never talks directly to Supabase payment tables or Stripe’s secret API.
+
+A narrowly scoped server-only Supabase secret client may access private anonymous-cart and payment data because no buyer Supabase identity exists. It must remain isolated in payment/cart repositories and never become a generic database proxy. Revalidate every input, constrain every operation, and deny direct public access with RLS and grants.
+
+GUEST CART DESIGN
+
+Implement a server-backed cart instead of using `localStorage` as the source of truth.
+
+Cart identity:
+
+- Generate at least 256 bits of cryptographically secure randomness on the server.
+- Store only a SHA-256 or HMAC-SHA-256 digest of the token in Postgres.
+- Send the raw token only in an HttpOnly, SameSite=Lax cookie with Path `/`, no Domain, and Secure in production.
+- Prefer a `__Host-` cookie name where environment constraints permit it.
+- Document safe localhost behavior.
+- Never place the cart token in a URL, HTML, analytics payload, client JavaScript state, log, error report, Stripe metadata, or plaintext database column.
+- Never let the client choose its cart ID.
+- Rotate or create a fresh cart after conversion or suspicious invalid state.
+- Use a documented idle and absolute expiry appropriate for a shopping cart, such as approximately 30 days.
+- Safely clean up abandoned carts.
+
+Cart behavior:
+
+- A digital product may appear at most once.
+- Quantity is fixed at one because every line represents one license.
+- Future multi-seat licensing must use a separately reviewed product or SKU model.
+- Enforce a modest maximum item count, such as 20, plus Stripe-supported amount boundaries.
+- Keep chosen limits in shared constants covered by validation and tests.
+- Accept only opaque product IDs or slugs.
+- Load authoritative product, price, currency, rights status, publication state, purchase availability, and active deliverable version on the server.
+- Reject free products from paid Checkout with a clear message explaining that free acquisition is not enabled yet.
+- Reject drafts, archived or unpublished products, missing rights clearance, missing or unready deliverables, invalid, zero, negative, or overflowing prices, unsupported currency, and cross-currency carts.
+- Use one configured presentment currency unless the existing schema already contains a thoroughly tested multi-currency model.
+- Do not enable Stripe Adaptive Pricing or automatic local-currency conversion in Step 5.
+- Recompute cart display DTOs from current product data on every server cart read.
+- Never persist the current product price in the mutable cart as an authority.
+- If a product’s price or version changed, or it became unavailable, show the safe change and require the visitor to review the refreshed cart before Checkout.
+- Keep the cart after cancellation or failed/expired Checkout.
+- Mark it converted only after an authoritative paid transition.
+- A later cart interaction after conversion creates a new empty cart without destroying the order relationship required by the success page.
+
+Make cart mutations transactional and safe under multiple tabs and double-clicks.
+
+Give the cart a monotonically increasing version and update it atomically. If the client sends a stale version, return a typed conflict and current cart. Adding an existing product and removing an absent product must be idempotent. Clearing the cart must be explicit. Never mutate the cart through GET requests.
+
+Preserve storefront performance and caching. A visitor cookie must not make every public product or catalog page dynamic or privately cached. Render cart count and personalized cart state through the smallest client/server island or no-store endpoint supported by the current architecture. Verify that public HTML stays shared/cacheable and that no response containing a cart token enters a public cache.
+
+The `/cart` page and optional cart drawer must show:
+
+- Safe product thumbnail and title.
+- Useful compatibility summary.
+- Server-calculated price.
+- Subtotal.
+- Unavailable or changed-price notices.
+- Remove and clear controls.
+- One primary Checkout action.
+- A truthful message that applicable taxes are calculated during Checkout when tax is configured.
+
+Do not show fabricated tax values or shipping fields for digital products.
+
+DATABASE MODEL AND MIGRATIONS
+
+Adapt table names to current conventions, but provide equivalents of:
+
+1. Guest carts:
+   - Internal UUID.
+   - Unique token digest.
+   - State.
+   - Currency.
+   - Monotonic version.
+   - Created, updated, last-activity, expiry, and converted timestamps.
+   - Optional converted-order reference.
+
+2. Guest cart items:
+   - Cart and product IDs.
+   - Unique cart/product pair.
+   - Timestamps.
+   - No browser-authoritative persisted price.
+
+3. Checkout attempts:
+   - Random internal/public-safe UUID.
+   - Cart ID, cart version, and fingerprint.
+   - State.
+   - Stable outbound Stripe idempotency key.
+   - Trusted expected subtotal and currency.
+   - Legal and policy version references.
+   - Stripe Session and PaymentIntent identifiers.
+   - Creation, update, and expiry timestamps.
+   - Failure category.
+   - Retry and reconciliation fields.
+
+4. Checkout-attempt items:
+   - Immutable product ID and product row/version.
+   - Title and slug.
+   - Product type.
+   - Unit amount and currency.
+   - Quantity fixed at one.
+   - Customer-facing license version, hash, or reference.
+   - Tax classification reference when configured.
+   - Selected immutable ready deliverable asset/version ID.
+   - No client-facing private Storage key.
+
+5. Stripe webhook inbox:
+   - Unique Stripe event ID.
+   - Event type and related object ID.
+   - Livemode/environment and API version.
+   - Signature-verified receipt time.
+   - Private verified payload or sufficient processing data.
+   - Processing state and attempt count.
+   - Lease and next-attempt fields.
+   - Processed timestamp.
+   - Redacted last error and correlation ID.
+
+6. Orders:
+   - Unpredictable public order number.
+   - Unique checkout-attempt ID.
+   - Unique Stripe Checkout Session ID.
+   - Nullable unique PaymentIntent and latest Charge identifiers.
+   - Separate payment, refund, dispute, and fulfillment states.
+   - Fulfillment fixed to not-started or blocked in this step.
+   - Currency, subtotal, discount, tax, total, and amount refunded.
+   - Minimal required buyer email and tax-location evidence.
+   - Consent and policy references.
+   - Paid, failed, and refunded timestamps.
+   - Manual-review or hold reason.
+   - Created and updated timestamps.
+
+7. Order items:
+   - Immutable order relationship.
+   - Complete commercial snapshot.
+   - Immutable product and deliverable-version references.
+   - Quantity fixed at one.
+
+8. Refund requests and refunds:
+   - Order ID.
+   - Internal request ID and Stripe idempotency key.
+   - Amount in integer minor units.
+   - Strictly limited reason or note.
+   - Requesting administrator UID.
+   - Unique Stripe Refund ID when known.
+   - Status and safe Stripe failure-code subset.
+   - Timestamps.
+
+9. Optional payment-state transition records if the existing append-only Step 4 audit log is insufficient.
+
+Do not duplicate existing tables or store contradictory authoritative state.
+
+Add constraints for:
+
+- Currency format.
+- Positive and bounded amounts.
+- Subtotal, tax, total, and refund relationships.
+- Allowed states and transitions.
+- Quantity equal to one.
+- Valid timestamps.
+- Bounded text.
+
+Use appropriate indexes for:
+
+- Cart token-digest lookup.
+- Cart expiration.
+- Stripe identifiers.
+- Pending webhook processing.
+- Order number, date, and status.
+- Refund state.
+- Email support lookup only if legally and operationally justified.
+
+Use partial unique indexes where appropriate, including a rule allowing only one reusable creating/open attempt for an exact cart fingerprint.
+
+Verify representative query plans for worker and admin-order access.
+
+Keep private payment tables inaccessible through the public Supabase API. Enable RLS where required and revoke anonymous/authenticated table privileges by default.
+
+Allow only:
+
+- The narrowly scoped server secret boundary for cart, Checkout, webhook, and public-status operations.
+- Active AAL2 administrators to read the minimum necessary order/refund/audit information through protected server operations or deliberately narrow RLS.
+- No browser role to create or modify orders, webhook events, payment state, Stripe IDs, refunds, totals, buyer email, consent evidence, or fulfillment state.
+
+Use narrow transactional database functions for operations requiring locks and multiple writes.
+
+Revoke execution from `public`, `anon`, and ordinary authenticated roles unless a specific role genuinely requires it.
+
+For every `security definer` function:
+
+- Use an empty or fixed safe `search_path`.
+- Schema-qualify every object.
+- Validate the caller and execution context internally.
+- Grant execution only to the exact required role.
+
+Regenerate checked-in database types.
+
+Prevent checkout-attempt items and order items from being updated or deleted after finalization except through a documented repair or migration procedure. Never cascade-delete a paid order because a cart or product is removed.
+
+CHECKOUT ATTEMPT AND CONCURRENCY PROTOCOL
+
+Create Checkout through a recoverable saga. Do not hold a database transaction open while calling Stripe.
+
+Required sequence:
+
+1. Receive a same-origin POST or Server Action containing only the current cart version and current versioned-consent acknowledgement identifiers—not prices or Stripe identifiers.
+2. Apply durable rate limits using the cart-token digest and a privacy-preserving IP/device key where practical. Do not use an in-memory Map and claim it provides distributed protection.
+3. Transactionally lock and read the cart.
+4. Re-resolve every item from trusted product, rights, and asset tables.
+5. Enforce every purchase gate.
+6. Reject empty, free-only, stale, mixed-currency, excessive, or changed carts with a refreshed typed cart response instead of silently charging a different total.
+7. Validate that required consent evidence is current and bound to this exact cart fingerprint.
+8. Build a deterministic server-side cart fingerprint from sorted trusted product, version, price, currency, asset, license, and policy facts.
+9. Reuse an existing unexpired open Checkout Session only if its fingerprint and consent versions match exactly.
+10. Otherwise, create one immutable `creating` checkout attempt and its item snapshots under a unique database constraint.
+11. Commit the database transaction.
+12. Create the Stripe Checkout Session using the attempt’s stable non-PII idempotency key and exact immutable attempt data.
+13. Persist the returned Session ID, PaymentIntent when available, URL, and expiry.
+14. Transition the attempt to open.
+15. Never return the full Stripe secret response object to the browser.
+16. Redirect server-side to the exact Stripe-hosted Session URL or return only a narrowly validated Stripe redirect URL.
+
+Double-clicks, simultaneous tabs, Vercel retries, client retries, and timeouts after Stripe accepted the request must converge on the same attempt and Session.
+
+Use both:
+
+- Database uniqueness and locking.
+- A Stripe idempotency key derived from the random checkout-attempt ID.
+
+Never use email or other PII as an idempotency key.
+
+Never create a new idempotency key when retrying the same attempt.
+
+Never automatically create a second attempt after an ambiguous Stripe error. Mark it for reconciliation.
+
+If Stripe creation succeeds but the local update fails, retry with the same idempotency key to recover and persist the same Session response.
+
+If Stripe returns a persistent ambiguous or 5xx idempotent response, do not create another charge path blindly. Surface a safe reconciliation state with a correlation ID.
+
+STRIPE SDK AND CHECKOUT SESSION
+
+Install only the official stable Stripe Node SDK if absent and pin it through the lockfile.
+
+Instantiate it in a `server-only` module with:
+
+- The Stripe secret key.
+- An explicit stable GA API version supported by the installed SDK and configured webhook destination.
+- No preview API version.
+- No undocumented parameters.
+- No secret imported by client code.
+
+Create a hosted Checkout Session with these rules:
+
+- Use hosted/default `ui_mode`.
+- Use `mode: payment`.
+- Generate every line item from immutable checkout-attempt snapshots.
+- Use quantity one.
+- Prefer trusted inline one-time `price_data` to avoid an unsynchronized secondary Stripe catalog unless the repository already has a proven immutable Stripe Price-version mapping.
+- Do not create new Stripe Products or Prices on every Checkout click.
+- Length-limit and sanitize product names and descriptions.
+- Optional product images must be intentional public cover URLs.
+- Never include private URLs or sensitive metadata.
+- Currency and unit amount come only from trusted integer snapshot fields.
+- Tax code and tax behavior come from reviewed server configuration, not the browser.
+- Keep `customer_creation` as `if_required` for guest one-time purchases unless a documented legal or operational requirement says otherwise.
+- Do not pass `customer_email`; allow Stripe-hosted Checkout to collect the delivery email.
+- Omit static `payment_method_types` so Stripe Dashboard and dynamic-method eligibility apply.
+- Enable only methods that have been reviewed and tested.
+- Do not enable promotion codes or discounts.
+- Do not collect phone or shipping address.
+- Collect billing address and tax ID only when required by the approved tax configuration.
+- Use automatic locale unless the existing storefront locale strategy requires something else.
+- Set an explicit Session expiry within Stripe’s permitted range, such as 60 minutes, and document it.
+- Do not enable Session recovery, optional items, Adaptive Pricing, post-purchase invoices, or saved-payment-method setup unless separately approved and modeled.
+- Use `client_reference_id`, Session metadata, and PaymentIntent metadata only for opaque internal identifiers and schema version.
+- Never put buyer email, cart token, rights notes, private paths, browser prices, or secrets in metadata.
+- Derive success and cancel URLs from one validated server-side canonical application origin.
+- Never derive payment redirects from request `Origin`, `Referer`, arbitrary host text, or browser input.
+- Use a fixed success URL such as `/checkout/success?session_id={CHECKOUT_SESSION_ID}`.
+- Preserve Stripe’s literal `{CHECKOUT_SESSION_ID}` placeholder.
+- Use a fixed cancel URL such as `/cart?checkout=cancelled`.
+- Use automatic capture unless a separately reviewed business requirement proves manual capture is necessary.
+
+Dynamic payment methods do not mean every method is suitable.
+
+Document exactly which methods were tested in Stripe sandbox. A delayed method must not be enabled for production until its pending, success, and failure paths pass.
+
+Do not advertise a payment method or wallet merely because its logo exists. Eligibility depends on Stripe account country, customer country and device, currency, amount, method configuration, and Dashboard settings.
+
+GUEST EMAIL AND DATA MINIMIZATION
+
+Use `customer_details.email` from the authoritative completed or retrieved Checkout Session as the delivery-email source.
+
+Validate its presence and maximum length before storage.
+
+Preserve the usable address accurately. Optionally maintain a separate normalized lookup value or hash according to the repository privacy design. Never infer a customer identity merely because two orders use the same email.
+
+Do not store phone or shipping information.
+
+Store billing country, postal code, tax identifiers, or other location evidence only when genuinely required by the selected tax and legal process.
+
+Leave full payment-method details at Stripe.
+
+Do not store card brand or last four unless a documented support requirement exists. If displayed, use only Stripe’s safe fields.
+
+Define a retention and deletion approach for:
+
+- Abandoned carts.
+- Checkout attempts.
+- Temporary webhook payloads.
+- Customer PII.
+- Financial records.
+
+Do not invent a statutory financial-record period. Record it as pending legal review.
+
+Stripe payment receipts, if enabled in Dashboard, are separate from the Step 6 package-access email. Do not describe a Stripe receipt as fulfillment and do not send an application email during Step 5.
+
+CONSENT AND CONSUMER-LAW PLUMBING
+
+Do not invent legal conclusions or final wording. The merchant country, legal entity, and target-market obligations have not yet been approved.
+
+Implement technical support for versioned Checkout consent:
+
+- An explicit unchecked pre-Checkout acknowledgement tied to the exact cart fingerprint for any legally required immediate digital-content-performance or withdrawal-right acknowledgement.
+- Policy and license version IDs with hashes or stable references stored in the checkout attempt and immutable order.
+- Required re-consent when the cart fingerprint or policy version changes.
+- Server-side enforcement so bypassing the checkbox UI cannot create a Checkout Session.
+- Stripe Checkout `consent_collection.terms_of_service = required` only when the actual Terms URL, Stripe account setting, and approved policy are configured.
+- Recording of Stripe’s authoritative Checkout consent result when returned.
+- No marketing consent or preselected promotional opt-in.
+
+Use clear test placeholder labels only in sandbox and mark them as not legally approved.
+
+Implement a fail-closed production-readiness setting so live Checkout cannot be enabled until the following are reviewed:
+
+- Terms.
+- Privacy notice.
+- Refund policy.
+- Customer license.
+- Digital-content consent wording.
+- Policy version registry.
+- Business identity and contact details.
+- Checkout button wording.
+
+Step 7 will finalize legal content. Step 5 only builds the consent evidence mechanism.
+
+TAX ARCHITECTURE AND LIVE GATE
+
+Do not guess tax, VAT, or GST treatment based on the developer’s location or customer IP.
+
+Implement a documented tax configuration boundary:
+
+- Standard Stripe Tax may set `automatic_tax.enabled` only when Stripe Tax is activated, merchant registrations and settings are complete, product tax codes are reviewed, price tax behavior is explicit, and sandbox tests pass.
+- When automatic tax is enabled, let Checkout collect the minimum location fields needed for calculation.
+- Use Stripe’s resulting subtotal, tax, and total as the financial outcome after reconciling them against the expected trusted subtotal.
+- When tax is not configured, do not display a fabricated tax amount or claim prices include or exclude tax.
+- Keep live payments blocked while tax treatment is unresolved.
+- Store expected pre-tax subtotal.
+- Reconcile Stripe currency, subtotal, discount, tax, and total using integer minor units.
+- Define inclusive or exclusive price display consistently with the public catalog and reviewed jurisdiction.
+- Do not change tax behavior dynamically without explicitly modeling it.
+- Do not automatically adopt Stripe Managed Payments or another merchant/tax-liability model.
+- Document Managed Payments only as a separate business and legal option requiring explicit approval.
+- Do not enable Adaptive Pricing because localized presentment changes currency, reconciliation, refund, and accounting requirements.
+
+Create or update `docs/TAX_AND_CHECKOUT_LEGAL.md` with:
+
+- Current sandbox configuration.
+- Unresolved merchant and jurisdiction questions.
+- Stripe account settings still required.
+- Exact live-release blockers.
+- A clear statement that engineering safeguards are not legal or tax advice.
+
+WEBHOOK ENDPOINT
+
+Create one dedicated uncached POST Route Handler such as `/api/stripe/webhook` using the Node runtime required by the official Stripe SDK.
+
+The endpoint is intentionally public. It does not use admin authentication or browser CSRF tokens. Its authentication mechanism is Stripe signature verification.
+
+Required ingress behavior:
+
+1. Reject non-POST methods.
+2. Reject excessive request sizes.
+3. Read the body exactly once as raw text or bytes.
+4. Never call `request.json()` or mutate and re-serialize the body before verification.
+5. Require the `Stripe-Signature` header.
+6. Verify the raw payload, signature header, and endpoint-specific webhook secret using the official Stripe SDK and normal timestamp-tolerance behavior.
+7. Return a nondisclosing 400 for malformed payloads or invalid/expired signatures.
+8. Verify the expected test/live environment and account context where available.
+9. Keep test and live webhook secrets separate.
+10. Accept only explicitly supported event types.
+11. Safely acknowledge unsupported verified events without processing them.
+12. Persist a verified event in the private webhook inbox under its unique Stripe event ID before acknowledging success.
+13. Never persist an unverified event.
+14. A duplicate event ID returns 2xx after confirming the existing durable record.
+15. Duplicate receipt must not concurrently repeat side effects.
+16. If durable persistence fails, return a retryable 5xx.
+17. If persistence succeeds, return 2xx quickly and process through the durable worker path.
+18. Never log the signing secret, full signature, raw payload, customer email, billing address, Checkout URL, cart token, or PaymentIntent client secret.
+
+Subscribe only to events required by the integration.
+
+At minimum evaluate and implement:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `checkout.session.expired`
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
+- Minimal `charge.dispute.created`, `charge.dispute.updated`, and `charge.dispute.closed` tracking if needed for future fulfillment safety.
+
+Do not subscribe to every Stripe event.
+
+Do not process redundant Checkout Session and PaymentIntent success events in a way that can create duplicate orders. Checkout Session events are the primary payment lifecycle for this integration.
+
+WEBHOOK INBOX AND PROCESSOR
+
+Build a durable processor around the webhook inbox.
+
+It may attempt a small payment-state transition immediately after durable receipt using the current Next.js post-response mechanism, but correctness must not depend on:
+
+- An in-memory Promise.
+- One Vercel invocation.
+- One webhook delivery.
+- Event arrival order.
+
+Provide a scheduled and reconciliation entry point that a later Vercel deployment can invoke. Protect it with authentication and overlap prevention. Do not add an external queue provider without approval.
+
+Worker behavior:
+
+- Claim rows transactionally with a lease.
+- Use `FOR UPDATE SKIP LOCKED` or an equivalent proven concurrency pattern.
+- Use bounded exponential retry with jitter.
+- Track maximum attempts and maximum age.
+- Move exhausted events into a visible dead-letter or manual-review state.
+- Retrieve the current relevant Checkout Session, PaymentIntent, Refund, or Charge from Stripe where required.
+- Do not trust event arrival order or stale event-object state.
+- Retrieve all Checkout line items when needed and handle pagination.
+- Do not use the Stripe event `created` timestamp for duplication or ordering decisions.
+- Make every state application repeatable and concurrency-safe.
+- Treat a second distinct Stripe event object concerning the same resource as a valid update or no-op based on authoritative current state.
+- Use monotonic transitions so older failure or processing events cannot regress a paid or refunded order.
+- Keep network calls outside long-held database locks.
+- Apply verified results through short compare-and-set transactions.
+- Preserve only redacted failure codes and correlation IDs.
+- Never store secrets in processor errors.
+- Purge or null complete private event payloads after a documented short retention period once durable business fields exist.
+- Retain the event envelope and processing audit required for reconciliation.
+
+Stripe event retrieval is time-limited, so local durable receipt and prompt reconciliation are mandatory.
+
+Add an authenticated administrator/operator reconciliation action or server-only script plus a scheduled scan for:
+
+- Stuck inbox rows.
+- Checkout attempts left in creating/open states too long.
+- Stripe Sessions missing after local update failure.
+- Pending payments.
+- Paid Stripe Sessions without a local order.
+- Pending refunds.
+- Dead-letter events.
+
+Reconciliation must retrieve Stripe’s current state and invoke the same idempotent state-transition functions. It must never directly set `paid = true`.
+
+PAYMENT AND ORDER STATE MACHINE
+
+Keep Checkout attempt, payment, refund, dispute/hold, and fulfillment states separate. Do not use one overloaded Boolean.
+
+Support at least these semantics:
+
+- Session created/open:
+  - Visitor may pay.
+  - No order entitlement exists.
+
+- Session completed but payment status unpaid or processing:
+  - Create or update a pending order or attempt as appropriate.
+  - Store email and financial totals safely.
+  - Do not mark paid.
+  - Do not produce a future fulfillment trigger yet.
+
+- Immediate completed Session with freshly retrieved `payment_status = paid`:
+  - Atomically upsert exactly one paid order and immutable items.
+
+- `checkout.session.async_payment_succeeded`:
+  - Retrieve the current Session.
+  - Perform the same idempotent paid transition only if its payment status is actually paid.
+
+- `checkout.session.async_payment_failed`:
+  - Mark the attempt or order payment failed.
+  - Preserve its history.
+  - Create no entitlement.
+  - Allow a new reviewed Checkout attempt from the cart.
+
+- `checkout.session.expired`:
+  - Expire the attempt.
+  - Preserve or reopen the unpaid cart safely.
+  - Never create an entitlement.
+
+- Refund events:
+  - Reconcile individual refunds and aggregate refunded amount with Stripe.
+  - Represent pending, succeeded, failed, partial, and full outcomes accurately.
+
+- Dispute created:
+  - Put the order into a future-fulfillment hold or review state.
+  - Keep dispute state separate from refund state.
+
+The paid transition must execute in one database transaction and:
+
+1. Lock and reread the checkout attempt or order.
+2. Match the opaque attempt reference.
+3. Match Stripe Session ID.
+4. Match expected test/live environment.
+5. Match currency.
+6. Match expected subtotal and Stripe totals.
+7. Match Stripe line items.
+8. Match PaymentIntent.
+9. Verify that the Session is genuinely paid rather than merely complete.
+10. Verify that a customer delivery email exists.
+11. Detect mismatched amount, currency, item set, rights recall, unavailable asset, or invalid metadata.
+12. Route unsafe or mismatched payments into a visible `manual_review` or fulfillment-hold state instead of issuing access.
+13. Upsert exactly one order under unique attempt and Session identifiers.
+14. Insert immutable order-item snapshots from the trusted checkout attempt.
+15. Include purchased deliverable asset-version and policy/license references.
+16. Record Stripe totals, identifiers, and authoritative payment time.
+17. Mark the cart converted.
+18. Mark the checkout attempt completed.
+19. Write safe audit and state-transition events.
+20. Expose one documented transactional extension point where Step 6 can atomically create download grants and a delivery-outbox job before commit.
+
+Do not call an email provider, issue a token, sign a Storage URL, or attach a package during Step 5.
+
+Set fulfillment explicitly to `not_started` or `blocked_until_step_6` so payment cannot be mistaken for completed delivery.
+
+Product-price changes after Session creation must not rewrite its immutable attempt or order snapshot. Honor the exact valid short-lived Checkout snapshot if payment succeeds.
+
+If a product is normally unpublished after Session creation but its purchased asset version and distribution rights remain valid, follow the documented sale policy.
+
+If rights were revoked, the asset became quarantined, or fulfillment became unsafe before payment completed:
+
+- Record the authoritative payment.
+- Put the order into manual review or automatic-refund consideration.
+- Never silently substitute another file.
+
+SUCCESS, PENDING, FAILURE, AND CANCEL UX
+
+The success page must be server-rendered, private, no-store, and read-only.
+
+Use the fixed Stripe Session ID only as a lookup hint. Bind the matching attempt to the current guest-cart cookie or another high-entropy status capability created by the server.
+
+Possession of a guessed order or Session identifier alone must not reveal order or email information.
+
+The success page may read only a narrow local status DTO:
+
+- Processing:
+  - Payment confirmation is pending.
+  - Explain that delivery occurs only after confirmation.
+
+- Paid:
+  - Payment is confirmed.
+  - During Step 5, honestly state that secure delivery is not enabled until Step 6 and test completion.
+  - Never falsely claim an email was sent.
+
+- Failed:
+  - Payment failed.
+  - No package was delivered.
+  - Provide a safe path back to a reviewed cart and new Session.
+
+- Expired or cancelled:
+  - No confirmed payment.
+  - Preserve the cart.
+
+- Manual review:
+  - Display a generic support-oriented message.
+  - Do not expose internal risk or security details.
+
+- Refunded or partially refunded:
+  - Show the appropriate safe status where applicable.
+
+Use bounded polling of a same-origin no-store status endpoint with progressive backoff for webhook latency. Stop after a reasonable limit and provide refresh or support guidance.
+
+The polling endpoint must read only the local database.
+
+It must not retrieve Stripe and mutate payment state, create orders, or trigger fulfillment.
+
+Do not display:
+
+- Full email.
+- Billing address.
+- Private order internals.
+- Stripe metadata.
+- Private asset references.
+- Signed URLs.
+
+The cancel URL is navigation only. It must not mark a payment failed because a customer can press Back and still complete payment in another tab.
+
+ADMIN ORDER AND REFUND OPERATIONS
+
+Extend the existing Step 4 admin area with AAL2-protected equivalents of:
+
+- `/admin/orders`
+- `/admin/orders/[id]`
+
+The order list must provide server-side pagination and filters for:
+
+- Order number.
+- Date.
+- Payment state.
+- Refund state.
+- Hold or manual-review state.
+- Carefully designed support email lookup.
+
+The order detail must show:
+
+- Immutable purchased items.
+- Safe Stripe identifiers.
+- Subtotal, tax, discount, total, and refunded amount.
+- Payment timeline.
+- Consent and policy versions.
+- Minimal or redacted buyer information.
+- Webhook and reconciliation health.
+- Refund history.
+- Future fulfillment state.
+
+Add a retry or reconciliation action that retrieves current Stripe state and invokes the normal processor.
+
+Never provide a manual “mark as paid” action.
+
+Every admin page and action must:
+
+- Remain dynamic and no-store.
+- Remain noindex.
+- Use the central active-admin and AAL2 guard.
+- Prevent client editing of order/payment fields.
+
+Implement safe test-mode refunds:
+
+1. An AAL2 administrator opens a known paid order.
+2. The browser never provides an arbitrary PaymentIntent or Charge ID.
+3. Display the remaining refundable amount using safe integer-minor-unit formatting.
+4. Require an explicit full or partial refund choice.
+5. Require a reason.
+6. Require confirmation naming the order and amount.
+7. Reload the trusted order, payment state, currency, successful refund totals, and concurrency version on the server.
+8. Create or reserve one refund request transactionally.
+9. Give it a random stable Stripe idempotency key.
+10. Prevent concurrent over-refunding.
+11. Call Stripe outside the database transaction using the order’s trusted PaymentIntent or Charge.
+12. Persist the returned Refund ID and current state.
+13. Treat Stripe webhook and reconciliation as authoritative for final pending, succeeded, or failed state.
+14. Retry local failures with the same idempotency key.
+15. Never blindly create a second refund.
+16. Audit the actor, amount, safe reason, request, and result.
+17. Never log customer payment information.
+18. Set a future entitlement-revocation signal for Step 6 after a successful partial or full refund.
+
+Support refunds initiated in Stripe Dashboard by linking verified `refund.*` events to their order.
+
+Do not assume every refund succeeds immediately. Some refunds can be pending or fail.
+
+Do not present a manual cash refund as though Stripe processed it.
+
+SECURITY REQUIREMENTS
+
+- Keep `STRIPE_SECRET_KEY`, webhook secrets, Supabase secret key, cart-token pepper, and worker/reconciliation secret in validated server-only environment modules.
+- None may use a `NEXT_PUBLIC_` prefix.
+- Hosted Checkout does not require browser-side Stripe.js or card Elements.
+- Do not introduce an unnecessary client publishable-key integration.
+- Keep Stripe sandbox and live secrets and webhook endpoints separate.
+- Fail closed on test/live mismatches.
+- Add a server-side live-Checkout enable flag and release assertion.
+- Even with an accidental live key, refuse Session creation until later prerequisites are intentionally enabled.
+- Build success and cancel URLs from a configured canonical-origin allow-list.
+- Do not reflect request host values into redirects.
+- Use POST and same-origin or CSRF protection for browser cart and Checkout mutations.
+- Exempt only the Stripe webhook from browser CSRF and protect it with signature verification.
+- Apply cross-instance durable rate limiting to cart writes and Checkout creation.
+- Reuse valid open Sessions to reduce API abuse.
+- Validate every identifier, string length, item count, amount, currency, and state.
+- Guard integer overflow.
+- Handle zero-decimal currencies correctly if supported.
+- Never trust Stripe metadata alone.
+- Match metadata against locally persisted attempt and Session identifiers and freshly retrieved Stripe state.
+- Never trust success query parameters or Session state supplied by the browser.
+- Do not expose sequential internal order IDs.
+- Use non-enumerable public order numbers or capabilities.
+- Keep public status responses narrow.
+- Never expose email, raw Stripe objects, webhook payloads, audit payloads, private asset paths, or secrets.
+- Mask email in admin lists where practical.
+- Show full PII only when operationally necessary in the protected detail view.
+- Redact sensitive query parameters and Stripe identifiers according to the current logging policy.
+- Never log complete webhook bodies.
+- Apply retention rules to webhook payloads and abandoned carts.
+- Do not prematurely delete financial and audit records.
+- Use Stripe Radar and hosted fraud controls rather than inventing a browser fraud score.
+- Document remaining Stripe Dashboard configuration.
+- Do not claim PCI compliance or a particular SAQ result.
+- State only that hosted Checkout reduces the application’s direct exposure to card data.
+
+AUDIT AND OBSERVABILITY
+
+Use the existing append-only audit mechanism for:
+
+- Checkout-attempt creation, failure, and reconciliation without PII.
+- Payment transitions to pending, paid, failed, or manual review.
+- Order creation.
+- Refund requests and outcomes.
+- Admin reconciliation.
+- Dispute and fulfillment-hold changes.
+- Live-payment gate changes if application configuration models them.
+
+Structured logs may contain:
+
+- Correlation ID.
+- Stripe event ID and type.
+- Safe internal attempt or order ID.
+- State transition.
+- Duration.
+- Result.
+
+Logs must not contain:
+
+- Buyer email or address.
+- Raw webhook payload.
+- Cart token.
+- Stripe secrets or signatures.
+- Checkout URL.
+- Private asset information.
+
+Provide metrics-ready counters for:
+
+- Webhook inbox backlog and age.
+- Processing failures.
+- Checkout Sessions created.
+- Pending, paid, and failed payments.
+- Amount or currency mismatches.
+- Refunds.
+- Reconciliation findings.
+
+Leave complete monitoring-provider integration for Step 8.
+
+Show stuck and dead-letter webhook events and paid manual-review orders to AAL2 administrators. A temporary worker failure must not disappear behind a successful webhook response.
+
+ACCESSIBILITY AND USER EXPERIENCE
+
+Use the existing design system.
+
+The cart, status pages, admin order table/detail, confirmation dialogs, and error states must be responsive from 320 pixels upward and meet the repository’s WCAG 2.2 AA target.
+
+Requirements:
+
+- Proper page and section headings.
+- Programmatic labels.
+- Accessible table captions or responsive alternatives.
+- Logical focus order.
+- Visible keyboard focus.
+- Complete keyboard operation.
+- Restrained live-region announcements for add, remove, subtotal, and status changes.
+- Sensible focus movement after removing an item.
+- Do not communicate unavailable, changed, pending, paid, or refunded states through color alone.
+- Disable the Checkout control while the request is pending.
+- Do not rely on button disabling for idempotency.
+- Show genuine progress during Session creation.
+- Recover safely from network errors without clearing the cart.
+- Explain clearly that Stripe securely processes payment.
+- Explain that available payment methods appear on Stripe.
+- Do not display unverified payment-method logos.
+- Format money accessibly from integer minor units.
+- Keep legal acknowledgements readable, linked, unchecked, and separate from marketing.
+- Present delayed payment as pending—not as success and not as a generic failure.
+
+TESTING REQUIREMENTS
+
+Add deterministic tests at database, domain, route/action, component, integration, and E2E levels.
+
+Mock Stripe only where isolation is required.
+
+Also:
+
+- Test webhook signatures with the official Stripe SDK.
+- Run real Stripe sandbox and CLI flows when credentials are available.
+- Never use real payment-card data.
+- Never create live charges during development testing.
+
+Cart and domain tests must cover:
+
+- Random token generation.
+- Digest lookup.
+- Cookie flags.
+- Expiry and rotation.
+- Invalid, tampered, and missing tokens.
+- Idempotent add.
+- Duplicate item.
+- Removing a missing item.
+- Clear cart.
+- Concurrent tabs.
+- Stale cart-version conflict.
+- Maximum items.
+- Quantity fixed to one.
+- Free products.
+- Unpublished, archived, rights-revoked, or missing-deliverable products.
+- Invalid amounts and integer boundaries.
+- Mixed currency.
+- Ignoring forged browser price, title, currency, or asset.
+- Price and version-change review.
+- Conversion and new-cart behavior.
+- Absence of PII and tokens from responses, URLs, caches, analytics, and logs.
+- Public catalog caching remaining intact.
+
+Checkout creation tests must cover:
+
+- Empty or invalid cart.
+- Stale cart.
+- Missing or outdated consent.
+- Consent bound to another cart fingerprint.
+- Exact trusted line items.
+- Quantity and currency.
+- Metadata allow-list.
+- Fixed-origin URLs.
+- Guest email collection.
+- Dynamic payment-method behavior.
+- No phone, shipping, promotion, subscription, saved-method, or Adaptive Pricing features.
+- Double-click and concurrent requests producing one attempt and Session.
+- Timeout retry using the same Stripe idempotency key.
+- Stripe success followed by local persistence failure.
+- Recovery of that failure.
+- Ambiguous Stripe failure held for reconciliation instead of creating a second Session.
+- Open Session reuse only for an unchanged fingerprint.
+- New attempt after cart or policy change.
+- Durable rate limits.
+- Safe user errors and correlation IDs.
+- Refusal of live key or live-gate mismatch.
+
+Webhook tests must cover:
+
+- Valid official SDK signature.
+- Exact untouched raw body.
+- Missing, invalid, or expired signature.
+- Malformed payload.
+- Wrong secret or environment.
+- Oversized request.
+- Unverified events never reaching the inbox.
+- Duplicate same event ID.
+- Concurrent duplicate delivery.
+- Safe acknowledgement of unsupported verified events.
+- Two different event IDs concerning the same Stripe object and type.
+- Inbox persistence failure returning 5xx.
+- Successful durable receipt returning promptly.
+- Worker leases.
+- Worker crash and retry.
+- Exponential backoff.
+- Dead-letter visibility.
+- Two-worker concurrency.
+- Out-of-order completion, failure, success, and refund events.
+- No state regression.
+- Current Stripe-object retrieval rather than relying on event timestamps.
+- No raw payload, PII, or secret in logs or public DTOs.
+
+Payment and order tests must cover:
+
+- Immediate paid Session creating one order and item set.
+- Conversion of the associated cart.
+- Completed but unpaid delayed Session remaining pending.
+- No future fulfillment trigger for a pending payment.
+- Async success creating or marking paid exactly once.
+- Async failure producing no entitlement.
+- Safe retry after async failure.
+- Expired Session preserving the unpaid cart.
+- Amount mismatch.
+- Currency mismatch.
+- Session-ID mismatch.
+- Environment mismatch.
+- Line-item mismatch.
+- Missing email.
+- Product-version mismatch.
+- Asset-version mismatch.
+- Manual-review routing.
+- Immutable order and attempt items.
+- Product edits after Checkout not altering snapshots.
+- Success, cancel, and status routes being unable to mutate payment state.
+- Another visitor’s cart cookie being unable to enumerate an order.
+- No grant, download token, signed URL, email job, or package email being created.
+
+Admin and refund tests must cover:
+
+- Anonymous denial.
+- Non-admin denial.
+- Disabled-admin denial.
+- AAL1 denial.
+- AAL2 order pagination, filtering, and details.
+- No public caching of order pages.
+- No manual paid-state mutation.
+- Full refund.
+- Partial refund.
+- Minor-unit parsing.
+- Concurrent requests unable to exceed the refundable amount.
+- PaymentIntent or Charge always loaded from the trusted order.
+- Stripe retry using the same idempotency key.
+- Local failure after Stripe refund creation recovering the same refund.
+- Pending refund.
+- Successful refund.
+- Failed refund.
+- Dashboard-originated refund reconciliation.
+- Refund or dispute setting the future fulfillment hold or revocation signal.
+- Safe and append-only audit records.
+
+Stripe sandbox and manual E2E testing must include, where supported:
+
+- Successful card payment.
+- Card requiring 3D Secure authentication.
+- Declined card or payment failure.
+- User cancellation and return.
+- Payment completion from another tab after returning to the cart.
+- Checkout Session expiry.
+- At least one reviewed delayed-payment success and failure flow, or an exact blocker when the account/country does not support one.
+- Duplicate and manually resent webhook.
+- Webhook downtime, recovery, and reconciliation.
+- Full and partial refund.
+- Failed or pending refund simulation where Stripe tooling supports it.
+- Wallet rendering on an eligible HTTPS device or browser where practical.
+- Representative tax calculations only after tax is configured.
+
+Use Stripe CLI and sandbox tools with current official test values.
+
+Do not place test card numbers into server source or server API calls when official test PaymentMethod fixtures are appropriate.
+
+Do not load-test Stripe sandbox endpoints.
+
+Run the complete Steps 1–4 regression suite plus:
+
+- Formatting.
+- Lint.
+- Strict TypeScript.
+- Unit tests.
+- Component tests.
+- Integration tests.
+- Supabase reset, migrations, and seed.
+- pgTAP and RLS tests.
+- Generated database type drift.
+- E2E.
+- Accessibility.
+- SEO.
+- Production build.
+- Secret scan.
+- Dependency scan.
+
+Inspect the production client bundle for:
+
+- Stripe secret.
+- Supabase secret.
+- Webhook payload fields.
+- Cart-token pepper.
+- Private asset paths.
+- Server-only payment modules.
+
+If a Stripe account, sandbox capability, CLI, delayed payment method, wallet-capable device, Stripe Tax configuration, approved legal copy, scheduler, or hosted webhook URL is unavailable:
+
+- Run every unaffected test.
+- List the exact unverified scenario.
+- List the exact command or setting.
+- Explain why it could not run.
+- Explain its release consequence.
+- Do not count a mock as a real Stripe sandbox pass.
+
+DOCUMENTATION DELIVERABLES
+
+Create or update:
+
+1. `docs/CART.md`
+   - Cart identity and cookie model.
+   - Data flow.
+   - Mutation and version rules.
+   - Expiry and cleanup.
+   - Limits.
+   - Product validation.
+   - Caching strategy.
+   - Free-product exclusion.
+   - Failure UX.
+
+2. `docs/PAYMENTS.md`
+   - Checkout-attempt saga.
+   - Stripe SDK and API version.
+   - Trusted pricing.
+   - Exact Checkout configuration.
+   - Dynamic payment methods.
+   - Guest email.
+   - Success, cancel, and status behavior.
+   - Payment and order state machines.
+   - Immutable snapshots.
+   - Step 6 transactional extension point.
+
+3. `docs/STRIPE_WEBHOOKS.md`
+   - Raw-body signature verification.
+   - Endpoint setup.
+   - Exact subscribed events.
+   - Inbox, lease, retry, and dead-letter handling.
+   - Duplicate and out-of-order processing.
+   - Reconciliation.
+   - Stripe CLI commands.
+   - Signing-secret rotation.
+   - Redacted logging.
+
+4. `docs/REFUNDS.md`
+   - Admin refund flow.
+   - Idempotency.
+   - Partial and full refunds.
+   - Pending and failed refunds.
+   - Dashboard-originated refund reconciliation.
+   - Future entitlement hold and revocation.
+   - Current limitations.
+
+5. `docs/TAX_AND_CHECKOUT_LEGAL.md`
+   - Sandbox behavior.
+   - Consent evidence.
+   - Tax configuration boundary.
+   - Unresolved jurisdiction and entity decisions.
+   - Required Stripe and legal settings.
+   - Explicit live blockers.
+   - No false legal-advice claims.
+
+6. `docs/DATA_RETENTION.md` or the existing privacy document
+   - Cart retention.
+   - Webhook-payload retention.
+   - Payment and PII retention.
+   - Financial-record retention.
+   - Unknown statutory periods marked for legal review.
+
+7. `docs/ARCHITECTURE.md`
+   - Actual final Step 5 components and trust boundaries.
+
+8. `docs/SECURITY.md`
+   - Payment threats.
+   - Secret handling.
+   - RLS and grants.
+   - CSRF.
+   - Rate limits.
+   - Idempotency.
+   - Privacy.
+   - Reconciliation.
+   - Remaining risks.
+
+9. `docs/OPERATIONS.md`
+   - Stripe sandbox setup.
+   - Webhook forwarding.
+   - Event replay and reconciliation.
+   - Stuck-event recovery.
+   - Refund recovery.
+   - Live-gate operation.
+   - Stripe key and webhook-secret rotation.
+   - Incident procedures.
+
+10. `docs/ROADMAP.md`
+    - Mark Step 5 complete only after all acceptance conditions pass.
+    - Keep Steps 6–9 pending.
+    - Preserve the under-60-second confirmed-payment delivery-email invariant.
+
+11. README and `.env.example`
+    - Add only actual Stripe sandbox, CLI, and setup commands.
+    - Include environment variable names and descriptions only.
+    - Never include secret values.
+
+Document Stripe Dashboard or Workbench tasks that code cannot complete:
+
+- Branding and public business information.
+- Tested payment methods.
+- Webhook destination URL.
+- Webhook API version.
+- Webhook event allow-list.
+- Webhook signing secret.
+- Stripe receipts.
+- Radar settings.
+- Terms and privacy URLs.
+- Tax registrations and settings.
+- Test/live separation.
+- Later production domain.
+
+REQUIRED COMPLETION CHECKS
+
+Run and report the repository’s exact commands for:
+
+- Formatting.
+- Lint.
+- Strict TypeScript.
+- Unit, component, and integration tests.
+- Supabase reset, migrations, and seed.
+- pgTAP, RLS, function, and grant tests for carts, attempts, events, orders, order items, refunds, and admin access.
+- Generated database type drift.
+- Cart, Checkout, webhook, payment, and refund E2E tests.
+- Stripe sandbox and CLI scenarios available in the environment.
+- Complete storefront, admin, authentication, upload, accessibility, and SEO regression suites.
+- Production build.
+- Secret scanning.
+- Dependency scanning.
+- Production-bundle inspection.
+
+Also provide evidence for:
+
+- Representative database query plans.
+- Simultaneous and deduplicated requests.
+- Duplicate and out-of-order webhooks.
+- Immediate payment.
+- Delayed-payment behavior.
+- Refund reconciliation.
+- Success-page non-authority.
+- Cookie and cache headers.
+- Mobile and desktop cart/status screens.
+- AAL2 admin order and refund screens.
+
+Redact:
+
+- Every key and secret.
+- Signatures.
+- Email and billing addresses.
+- Cart tokens.
+- Checkout URLs.
+- Private asset references.
+- Session and PaymentIntent IDs in screenshots leaving the private development context.
+- Payment details.
+
+ACCEPTANCE CRITERIA
+
+Step 5 is complete only when:
+
+1. Steps 1–4 remain green, including catalog caching, SEO, media behavior, admin AAL2, upload security, and publication security.
+2. No buyer account or customer login exists.
+3. A persistent server-backed cart works through a high-entropy HttpOnly cookie whose database representation is only a digest.
+4. Cart mutations are transactional, versioned, idempotent, bounded, accessible, and safe under concurrent tabs or double-clicks.
+5. Product quantities are fixed at one.
+6. Free, unpublished, rights-blocked, unavailable, cross-currency, malformed-price, and missing-deliverable products cannot reach Checkout.
+7. Browser-supplied price, title, currency, tax, asset, entitlement, and payment state are ignored.
+8. Every Stripe line item originates from a trusted immutable checkout-attempt snapshot.
+9. Public catalog pages retain deliberate shared caching.
+10. Public cached output never contains a cart token.
+11. One unchanged cart and consent fingerprint produces at most one reusable open Checkout Session.
+12. Stripe calls use stable non-PII idempotency keys.
+13. Checkout is Stripe-hosted, one-time, guest, and collects email.
+14. Dynamic eligible payment methods are controlled through Stripe rather than a hard-coded static list.
+15. The application contains no card fields.
+16. Success and cancel URLs use a configured origin.
+17. Stripe metadata is minimal and opaque.
+18. No Adaptive Pricing, coupons, subscriptions, shipping, saved-method, or free-order workaround was added.
+19. Consent and tax plumbing is versioned and server-enforced.
+20. Final legal and tax decisions remain explicit live blockers instead of guessed conclusions.
+21. The webhook verifies the exact raw body and Stripe signature.
+22. Verified events are stored durably before 2xx.
+23. Invalid events are rejected.
+24. No webhook secret or PII appears in logs.
+25. Duplicate, concurrent, out-of-order, retry, crash, and dead-letter scenarios are handled.
+26. Reconciliation uses the same idempotent transition logic.
+27. Immediate and delayed payments transition correctly.
+28. Completed-but-unpaid Sessions remain pending.
+29. Pending payments can never trigger future fulfillment.
+30. A paid Session creates exactly one order and immutable item snapshots.
+31. Purchased product and deliverable versions are preserved.
+32. Currency, line items, totals, email, Session, and environment are verified.
+33. Unsafe mismatches enter manual review.
+34. The paid transaction exposes the Step 6 atomic extension point.
+35. Step 5 creates no grant, access token, signed URL, email outbox job, or package email.
+36. The success page and status endpoint are narrow, capability-bound, no-store, and read-only.
+37. The success page cannot create, mark, or fulfill an order.
+38. Order, event, refund, buyer-email, Stripe-ID, and asset data is inaccessible through public Supabase roles and DTOs.
+39. AAL2 administrators can inspect orders and perform idempotent full or partial test-mode refunds.
+40. Stripe webhooks and reconciliation determine final refund status.
+41. Dashboard-originated refunds are reconciled.
+42. Disputes and successful refunds create a future fulfillment hold or revocation signal.
+43. Cart, Checkout status, and admin-order UI are responsive and accessible.
+44. Stripe sandbox tests cover successful, authenticated, failed, cancelled, expired, duplicate-webhook, delayed-payment where available, and refund paths.
+45. Every unavailable external scenario has a precise blocker and release consequence.
+46. No secret, raw webhook payload, buyer PII, cart token, private path, signed URL, or server-only module appears in public responses, bundles, or log fixtures.
+47. Live Checkout is fail-closed until Step 6 fulfillment, approved legal and tax configuration, production setup, monitoring, and release gates are complete.
+48. The future invariant remains explicit: authoritative immediate or delayed payment confirmation must atomically create a durable delivery job and normally send a secure expiring package-access email within 60 seconds.
+49. The success page never triggers delivery.
+50. The email will not contain the large package as an attachment.
+51. Documentation matches actual behavior.
+52. Step 6 and later work remain pending.
+
+FINAL RESPONSE FORMAT
+
+When finished, provide:
+
+1. A concise outcome and whether Step 5 is genuinely complete.
+2. Guest-cart identity, persistence, concurrency, expiry, and cache architecture.
+3. Database migrations, constraints, indexes, RLS/grants, and immutable snapshots.
+4. Checkout-attempt saga and exact Stripe Checkout configuration.
+5. Webhook verification, inbox, processor, retries, state machine, and reconciliation.
+6. Immediate and delayed payment, order, refund, and dispute-hold behavior.
+7. Success, cancel, and status UX.
+8. AAL2 admin order and refund UX.
+9. Consent, tax, privacy, and retention decisions.
+10. Unresolved live blockers.
+11. Important files changed.
+12. Exact commands run with pass, fail, and not-run results.
+13. Stripe sandbox and CLI scenarios actually completed.
+14. Redacted testing evidence.
+15. Security, accessibility, caching, query-plan, and bundle-inspection evidence.
+16. Earlier-step fixes, assumptions, residual risks, and precise blockers.
+17. Explicit confirmation that buyer accounts, free acquisition, download grants, access tokens, signed customer URLs, package email delivery, reviews, analytics, and deployment remain unimplemented.
+18. Confirmation that live charging remains disabled.
+19. Confirmation that the future confirmed-payment-to-secure-email requirement, normally under 60 seconds, remains preserved.
+20. The recommended next prompt title: `Step 6 — Secure digital fulfillment and automatic delivery email`.
+
+Stop after Step 5. Do not proceed to Step 6.

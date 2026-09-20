@@ -300,6 +300,46 @@ export type Database = {
           },
         ];
       };
+      // --- Step 5 private payment table (the migration defines more; regenerate
+      // types via `supabase gen types` against a linked project when wired). ---
+      webhook_inbox: {
+        Row: {
+          stripe_event_id: string;
+          event_type: string;
+          related_object_id: string | null;
+          livemode: boolean;
+          api_version: string | null;
+          received_at: string;
+          payload: unknown;
+          state: string;
+          attempt_count: number;
+          lease_until: string | null;
+          next_attempt_at: string | null;
+          processed_at: string | null;
+          last_error: string | null;
+          correlation_id: string | null;
+        };
+        Insert: {
+          stripe_event_id: string;
+          event_type: string;
+          related_object_id?: string | null;
+          livemode: boolean;
+          api_version?: string | null;
+          received_at?: string;
+          payload?: unknown;
+          state?: string;
+          attempt_count?: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["webhook_inbox"]["Insert"]> & {
+          state?: string;
+          lease_until?: string | null;
+          next_attempt_at?: string | null;
+          processed_at?: string | null;
+          last_error?: string | null;
+          correlation_id?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -357,6 +397,28 @@ export type Database = {
         Args: { p_product_id: string; p_expected_version: number };
         Returns: unknown;
       };
+      // Step 5 payment functions (SECURITY DEFINER; service_role boundary).
+      mark_order_paid: {
+        Args: {
+          p_attempt_id: string;
+          p_stripe_session_id: string;
+          p_stripe_payment_intent: string;
+          p_stripe_charge_id: string;
+          p_stripe_livemode: boolean;
+          p_expected_environment: string;
+          p_expected_currency: string;
+          p_expected_subtotal: number;
+          p_stripe_subtotal: number;
+          p_stripe_tax: number;
+          p_stripe_discount: number;
+          p_stripe_total: number;
+          p_buyer_email: string;
+          p_order_number: string;
+          p_items: unknown;
+        };
+        Returns: unknown;
+      };
+      after_order_paid_extension: { Args: { p_order_id: string }; Returns: unknown };
     };
     CompositeTypes: Record<string, never>;
   };
