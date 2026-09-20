@@ -35,6 +35,16 @@ const serverEnvSchema = z.object({
     .trim()
     .or(z.literal(""))
     .default(""),
+  // --- Step 5 payment secrets (server-only; never NEXT_PUBLIC_) ---
+  STRIPE_SECRET_KEY: z.string().trim().or(z.literal("")).default(""),
+  STRIPE_WEBHOOK_SECRET: z.string().trim().or(z.literal("")).default(""),
+  CART_TOKEN_PEPPER: z.string().trim().or(z.literal("")).default(""),
+  // Comma-separated canonical checkout origins (no trailing slash).
+  CHECKOUT_ORIGIN_ALLOWLIST: z.string().trim().or(z.literal("")).default(""),
+  // Fail-closed live-payment gate. Default false → only test/sandbox works.
+  LIVE_CHECKOUT_ENABLED: z
+    .preprocess((v) => v === "1" || v === "true" || v === true, z.boolean())
+    .default(false),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -72,4 +82,33 @@ export function getServerEnv(): ServerEnv {
 export function hasSupabaseServerConfig(): boolean {
   const env = readServerEnv();
   return env.SUPABASE_URL.length > 0 && env.SUPABASE_SECRET_KEY.length > 0;
+}
+
+/** True when a Stripe secret key + webhook secret are configured (sandbox or live). */
+export function hasStripeConfig(): boolean {
+  const env = readServerEnv();
+  return env.STRIPE_SECRET_KEY.length > 0 && env.STRIPE_WEBHOOK_SECRET.length > 0;
+}
+
+/** True when a Stripe LIVE key (sk_live_) is configured. */
+export function stripeKeyIsLive(): boolean {
+  return readServerEnv().STRIPE_SECRET_KEY.startsWith("sk_live_");
+}
+
+/** The cart-token pepper (server-only). Empty if not configured. */
+export function getCartPepper(): string {
+  return readServerEnv().CART_TOKEN_PEPPER;
+}
+
+/** Canonical checkout origin allow-list (lowercased, no trailing slash). */
+export function getOriginAllowlist(): string[] {
+  return readServerEnv()
+    .CHECKOUT_ORIGIN_ALLOWLIST.split(",")
+    .map((s) => s.trim().replace(/\/$/, "").toLowerCase())
+    .filter(Boolean);
+}
+
+/** Fail-closed live-checkout flag. Default false → only test/sandbox works. */
+export function isLiveCheckoutEnabled(): boolean {
+  return readServerEnv().LIVE_CHECKOUT_ENABLED;
 }

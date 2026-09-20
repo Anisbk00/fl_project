@@ -1,10 +1,12 @@
 # Roadmap
 
-This roadmap lists Steps 2–9. **Steps 1–4 are COMPLETE (within sandbox limits);
-Steps 5–9 remain explicitly UNIMPLEMENTED.** Step 1 delivered the foundation +
+This roadmap lists Steps 2–9. **Steps 1–5 are COMPLETE (within sandbox limits);
+Steps 6–9 remain explicitly UNIMPLEMENTED.** Step 1 delivered the foundation +
 secure catalog data layer; Step 2 the brand system + storefront shell; Step 3
 the live catalog, product pages, filters, SEO, and audio previews; Step 4 the
-secure admin auth + product CMS architecture + verifiable security logic.
+secure admin auth + product CMS architecture + verifiable security logic; Step 5
+the durable guest cart + Stripe-hosted checkout + signature-verified webhook
+pipeline + idempotent order/refund architecture + verifiable payment-domain logic.
 
 ## Step 2 — Brand system and responsive storefront shell ✅ COMPLETE
 
@@ -108,15 +110,44 @@ linked Supabase project. Run `supabase db reset` + `supabase db test` against a
 linked project. Per the plan, NO security control is claimed verified without
 running it.
 
-## Step 5 — Cart and Stripe guest checkout *(unimplemented)*
+## Step 5 — Cart and Stripe guest checkout ✅ COMPLETE (architecture + verifiable payment-domain logic; live Stripe/Supabase verification blocked)
 
-Implement a durable guest cart, trusted server-side price lookup, checkout-
-session creation, dynamic eligible payment methods, customer email collection,
-terms/consumer consent where legally required, tax configuration,
-success/cancel flows, signature-verified webhooks, idempotent orders, refunds,
-and exhaustive test-mode scenarios.
+Implemented the durable guest cart + Stripe-hosted checkout + signature-verified
+webhook pipeline + idempotent order/refund architecture + the verifiable
+pure-logic payment domain. Live Stripe sandbox/webhook/refund/E2E verification is
+a documented blocker (no Stripe keys + no live Supabase in the sandbox).
 
-**Not started.**
+**Implemented (code):**
+- SQL migration `0006_payments.sql`: `guest_carts` (token digest only),
+  `guest_cart_items`, `checkout_attempts` (+ partial unique open-fingerprint
+  index for Session reuse), `checkout_attempt_items`, `webhook_inbox`,
+  `orders` (separate payment/refund/dispute/fulfillment states),
+  `order_items` (immutable, `on delete restrict`), `refunds`; RLS denies
+  anon/authenticated (AAL2 admin read-only); transactional `mark_order_paid`
+  SECURITY DEFINER RPC (match + upsert + convert + audit + Step 6 extension
+  hook `after_order_paid_extension`); append-only immutability triggers.
+- Pure payment domain (unit-tested): integer-minor-unit money + reconcile +
+  overflow + refund-bounds, cart token + digest, cart fingerprint, consent,
+  idempotency keys, Checkout-Session config builder (no email/static payment
+  methods/shipping/promo; opaque metadata; canonical-origin URLs), webhook
+  event allow-list, validation gates, redaction, fail-closed live gate.
+- Stripe SDK server client (pinned GA, server-only); raw-body signature-
+  verified webhook Route Handler (verify→persist→2xx, 5xx on persistence
+  failure, 503 when no secret configured).
+- Routes: `/checkout` (saga entry, honest state), `/checkout/success`
+  (read-only no-store status), `/admin/orders` + `/admin/orders/[id]` (AAL2).
+- Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `CART_TOKEN_PEPPER`,
+  `CHECKOUT_ORIGIN_ALLOWLIST`, `LIVE_CHECKOUT_ENABLED` (server-only, fail-closed).
+- Docs: `CART.md`, `PAYMENTS.md`, `STRIPE_WEBHOOKS.md`, `REFUNDS.md`,
+  `TAX_AND_CHECKOUT_LEGAL.md`, `DATA_RETENTION.md`.
+
+**Honest blockers (sandbox):** real Checkout creation, real webhook signature
+verification against Stripe, the durable inbox/processor, order creation,
+refund flows, and the full Stripe sandbox E2E require a live Stripe account
+(sandbox keys + CLI + reachable webhook) + a live Supabase project. Run
+`stripe listen --forward-to …` + `supabase db reset` + `supabase db test` against
+a configured environment. **No mock counted as a real Stripe pass; live Checkout
+is fail-closed until Step 6 + legal/tax + monitoring + release gates.**
 
 ## Step 6 — Secure digital fulfillment *(unimplemented)*
 

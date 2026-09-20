@@ -1,0 +1,2509 @@
+Music Project Store — Master Plan and Implementation Prompts
+
+Canonical project reference — created 18 September 2026; updated 20 September 2026
+
+1. Product vision and non-negotiable requirements
+
+Build a worldwide digital-product store for music producers, inspired by the useful parts of FLPStudio.com's business model but not copied visually or technically.
+
+The store will sell only content that the owner has the legal right to distribute, including:
+
+original DAW project files and educational remakes;
+
+original stems rendered by the owner;
+
+original WAV/sample packs comparable in format and usefulness to well-known producer packs, but containing no copied third-party audio, branding, artwork, or files;
+
+optional free products used as acquisition products.
+
+Core user requirements:
+
+Public storefront with no customer registration or customer login.
+
+Guest cart and guest checkout.
+
+Only the owner/admin can sign in.
+
+Admin can create, edit, archive, publish, and organize products and upload assets.
+
+Every product can have an audio preview and optional video preview.
+
+Every product page exposes useful technical information: product type, DAW and version, BPM, musical key, duration, included formats/files, total download size, required plugins and versions, genre, license summary, and update date.
+
+Payments use Stripe-hosted Checkout, with eligible major payment methods and wallets managed dynamically in Stripe. The application never handles card details.
+
+As soon as Stripe authoritatively confirms an immediate or delayed payment, the buyer automatically receives the package-access email without admin intervention. The production target is delivery within 60 seconds of confirmation under normal conditions, backed by idempotency, retries, and reconciliation.
+
+Paid deliverables are private and are never exposed by permanent public URLs.
+
+Supabase is the database, authentication, and object-storage platform.
+
+Vercel is the deployment platform.
+
+The finished product must be secure, fast, accessible, SEO-ready, observable, tested, and release-ready.
+
+2. Lessons carried forward from the FLP Studio audit
+
+The new product must deliberately improve on the weaknesses found in the reference store:
+
+Do not allow broken home-page redirects or dead collection links.
+
+Make a large catalog discoverable with filters for genre, BPM, musical key, DAW/version, plugins, product type, price, and recency.
+
+Use clean product names and readable cards; never truncate the only useful identifying information.
+
+Display compatibility information before purchase.
+
+Add verified-buyer reviews later; never fabricate reviews or structured review data.
+
+Use one semantic H1 per page and valid Product, Offer, BreadcrumbList, and eligible Review structured data.
+
+Avoid keyword stuffing and auto-generated low-quality product copy.
+
+Render money accessibly and consistently from integer minor units.
+
+Keep refund, license, privacy, consumer-rights, and download policies consistent.
+
+Clearly state independence from DAW vendors and referenced artists whenever legally appropriate.
+
+Add measurement for search, preview play, add-to-cart, checkout start, purchase, and download without leaking sensitive data.
+
+Prefer improving discovery and trust over blindly adding thousands of products.
+
+3. Architecture decisions
+
+Application
+
+Next.js 16 App Router, latest stable 16.x release at implementation time; no canary or beta framework packages.
+
+React and TypeScript versions selected by the stable Next.js release.
+
+Node.js 24.x, pinned in package.json and local tooling because it is Vercel's current default LTS runtime.
+
+pnpm with a committed lockfile and pinned package-manager version.
+
+TypeScript strict mode, including noUncheckedIndexedAccess.
+
+Tailwind CSS and shadcn/ui for the later visual-system phase; install only what Step 1 actually uses.
+
+Server Components by default. Client Components only for interactivity such as the audio player, filters, cart, and admin upload progress.
+
+No custom Express server. Use Server Actions for authenticated mutations and Route Handlers for webhooks, checkout creation, downloads, and other true HTTP endpoints.
+
+Every Server Action and Route Handler performs its own authentication, authorization, input validation, and rate-limit check where applicable. A protected layout or Next.js Proxy is never treated as the only authorization layer.
+
+Supabase
+
+Postgres is the source of truth for catalog metadata, orders, fulfillment state, and download grants.
+
+Supabase Auth is used only for manually provisioned admin accounts. Public self-sign-up is disabled.
+
+Admin authorization is based on the authenticated Supabase user ID appearing in a private admin allow-list, not merely an email supplied by the browser.
+
+Require TOTP MFA/AAL2 for admin access before production launch.
+
+Use current sb_publishable_... and sb_secret_... API keys. Do not build a new project around the legacy anon or service_role keys.
+
+The publishable key may be used in the browser because RLS is the real access boundary.
+
+The secret key is imported only from server-only modules and never appears in a client bundle, log, URL, repository, or public document.
+
+Enable RLS and explicit grants on every table in an exposed schema. Test allow and deny cases with pgTAP/Supabase database tests.
+
+Public visitors can read only published, rights-cleared catalog data and its explicitly public media.
+
+Public previews and cover images live in an intentionally public bucket for CDN delivery.
+
+Purchased archives/project files live in a private bucket. Later, a server-side fulfillment check will issue short-lived signed download URLs.
+
+Large admin uploads go directly from the authenticated admin browser to Supabase Storage using TUS/resumable uploads or signed upload tokens. Never proxy large ZIP/WAV/project files through Vercel Functions.
+
+Use immutable/versioned storage paths rather than overwriting the same CDN path.
+
+Payments and fulfillment — later phase
+
+Stripe-hosted Checkout, guest checkout, one-time payments.
+
+The server recalculates every line item from trusted database values; it never accepts price or entitlement data from the browser.
+
+Let Stripe dynamically present eligible payment methods configured for the merchant, currency, amount, and customer location. Do not promise that every method is available in every country.
+
+Stripe webhooks are the payment authority. The success page is for user experience, not proof of payment.
+
+Verify Stripe signatures against the raw request body.
+
+Make fulfillment idempotent and concurrency-safe using unique Stripe event/session/payment identifiers and database transactions.
+
+Handle both immediate success and delayed payment events before granting files.
+
+The browser success redirect must never trigger delivery. A verified paid webhook creates the entitlement and a durable email-delivery job atomically, then an idempotent worker attempts delivery immediately and retries transient failures.
+
+Use Stripe Tax or another reviewed tax solution only after merchant country, legal entity, and tax obligations are confirmed.
+
+Guest delivery — later phase
+
+Collect the customer's delivery email through Stripe Checkout.
+
+After verified payment, create an order, immutable order-item snapshots, and download grants.
+
+Automatically email a high-entropy package-access link immediately after confirmed payment. Store only a cryptographic hash of the access token in the database.
+
+The email is the delivery channel, but large ZIP, WAV, stem, and project packages are not attached to it. The email links to a secure access page that issues short-lived private-storage URLs after validation.
+
+Use a durable transactional outbox/job record, provider idempotency where available, exponential retry with a bounded schedule, failure visibility, and a reconciliation/resend path so a temporary email-provider failure cannot silently lose a paid delivery.
+
+Validate token status, order payment status, expiry, revocation, and download limits before issuing a short-lived Supabase signed URL.
+
+Do not expose storage object paths in public catalog APIs.
+
+Be honest that signed links reduce casual unauthorized sharing but cannot provide perfect DRM after a customer downloads a file.
+
+Performance
+
+Render public catalog/product content on the server and cache/revalidate deliberately.
+
+Keep admin and order pages dynamic and uncached.
+
+Use optimized images, compressed preview audio, lazy loading, and small client bundles.
+
+Use URL search parameters for shareable catalog filters.
+
+Add indexes that match real catalog queries; confirm with query plans instead of guessing.
+
+Place Vercel Functions near the selected Supabase project region.
+
+Define measurable launch budgets later for Core Web Vitals, JavaScript weight, images, and audio.
+
+Security model
+
+Defend specifically against:
+
+unauthorized admin access and privilege escalation;
+
+public reads of drafts or private deliverables;
+
+secret-key exposure;
+
+price/cart manipulation;
+
+forged or replayed payment webhooks;
+
+duplicate fulfillment;
+
+guessing, replaying, or sharing download links;
+
+XSS through product descriptions and metadata;
+
+malicious or invalid uploads;
+
+abusive checkout/download/API traffic;
+
+sensitive customer/payment data appearing in logs;
+
+dependency and supply-chain vulnerabilities.
+
+Important controls include admin MFA, server-side authorization, RLS and grants, private storage, signed URLs, input schemas, sanitization, safe Markdown rather than arbitrary HTML, file allow-lists and size limits, checksums, rate limits, CSP/security headers, idempotency constraints, minimal data retention, dependency updates, audit logs, and tested backups.
+
+4. Phased implementation roadmap
+
+Step 1 — Foundation, architecture, and secure catalog data layer
+
+Create the repository, pinned toolchain, domain-oriented folder structure, environment validation, Supabase local configuration, catalog schema, storage buckets, RLS/grants, database security tests, CI, and architecture/security documentation. No production storefront, admin CMS, cart, or payment implementation yet.
+
+Step 2 — Brand system and responsive storefront shell
+
+Establish the original visual direction, responsive navigation, home-page information architecture, footer/trust navigation, accessible component primitives, loading/error/empty states, and performance budgets. Do not copy FLP Studio's design.
+
+Step 3 — Catalog, product pages, filters, SEO, and audio previews
+
+Build real data-backed catalog/product pages, fast URL-based filters, search, sorting, native performant preview playback, compatibility panels, related products, metadata, canonical URLs, sitemap, robots rules, Open Graph, and validated structured data.
+
+Step 4 — Admin authentication and product CMS
+
+Implement manually provisioned admin login, disabled public sign-up, MFA/AAL2 enforcement, protected server actions, product CRUD, draft/preview/publish workflow, rights-clearance gate, genres/plugins management, direct resumable uploads, validation, checksums, versioned assets, audit history, and safe delete/archive behavior.
+
+Step 5 — Cart and Stripe guest checkout
+
+Implement a durable guest cart, trusted server-side price lookup, checkout-session creation, dynamic eligible payment methods, customer email collection, terms/consumer consent where legally required, tax configuration, success/cancel flows, signature-verified webhooks, idempotent orders, refunds, and exhaustive test-mode scenarios.
+
+Step 6 — Secure digital fulfillment
+
+Implement private deliverables, order-item snapshots, hashed download tokens, and automatic package-access email delivery immediately after webhook-confirmed payment, targeting under 60 seconds in normal conditions. Use a durable outbox/job, idempotent sends, retries, failure monitoring, short-lived signed URLs, expiry/revocation/download limits, delayed-payment handling, refund revocation rules, resend/recovery without customer accounts, and fulfillment reconciliation.
+
+Step 7 — Trust, legal pages, reviews, and growth features
+
+Add consistent terms, privacy/cookie, refund, license, copyright/takedown, compatibility, and contact information reviewed for the operating jurisdiction. Add verified-purchase reviews, free-product/email funnel, bundles, promotions, recommendations, and trust content without dark patterns.
+
+Step 8 — Observability, security, performance, and accessibility hardening
+
+Add privacy-aware analytics, error monitoring, structured redacted logs, alerts, rate limits, bot controls, security headers/CSP, dependency/secret scanning, RLS regression tests, webhook/download abuse tests, WCAG review, browser/device E2E coverage, load checks, query analysis, Lighthouse/Core Web Vitals validation, backup/restore drill, and incident runbooks.
+
+Step 9 — Vercel production deployment and release
+
+Create separate development/preview/production configuration, provision production Supabase/Stripe/email services, rotate and scope secrets, set matching regions, configure domain/DNS/TLS, validate webhook endpoints, run migrations safely, seed the real admin, complete merchant/legal/tax checks, execute a release checklist and rollback test, perform a real low-value purchase/refund/download test, and launch with monitoring.
+
+5. Legal and operational release gate
+
+The store must not publish or sell:
+
+stems extracted from commercial masters;
+
+third-party sample-pack files, presets, MIDI, artwork, or project assets without redistribution rights;
+
+a famous song remake merely because it was recreated by ear, unless the composition, included audio/assets, naming, artwork, and intended distribution have been reviewed and cleared as required;
+
+product copy or branding that implies endorsement by an artist, label, DAW vendor, or sample-pack creator.
+
+The database therefore includes a rights status and prevents publication until a product is marked original or licensed. This is an engineering guardrail, not a substitute for legal advice. Before accepting live orders, verify business-registration, payment-processor eligibility, tax/VAT, consumer-contract, privacy, copyright, trademark, licensing, refund, and digital-withdrawal requirements for the actual operating jurisdiction and target markets.
+
+6. Exact prompt for the implementation AI — Step 1 only
+
+Copy everything inside the block below into the coding AI.
+
+You are a senior full-stack and application-security engineer. Implement Step 1 only of a production-grade worldwide digital music-product store. Read the complete repository and any project instructions before changing files. Preserve existing work. If the repository is empty, initialize it. Do not claim anything passed unless you actually ran it, and do not invent credentials or external resources.
+
+Full product context
+
+The finished product will sell legally distributable digital products for music producers: original DAW project files, educational remakes that have been legally cleared, original stems, and original WAV/sample packs. It is inspired by the product category of FLPStudio.com but must not copy its code, design, copy, branding, or assets.
+
+The eventual product has:
+
+a public storefront and catalog;
+
+no customer registration, login, or account area;
+
+a guest cart and guest Stripe-hosted Checkout;
+
+one or more manually provisioned admin users, with admin-only sign-in and MFA before production;
+
+admin product creation/editing/publishing and direct asset uploads;
+
+cover art, audio previews, optional video previews, and private paid files;
+
+detailed fields and filters for product type, genre, DAW/version, BPM, musical key, duration, plugins/versions, formats, file size, price, and date;
+
+Supabase for Postgres, Auth, and Storage;
+
+Vercel for deployment;
+
+later secure fulfillment through verified Stripe webhooks, guest email delivery, hashed access tokens, and short-lived private-storage signed URLs.
+
+Important: customer auth must never be introduced as a shortcut. Only admins authenticate. Public visitors use the Supabase anon Postgres role through the publishable key and may read only deliberately public, published data.
+
+Scope boundary
+
+In this task, implement only the technical foundation and secure catalog data layer. Do not implement the finished visual design, full catalog UI, audio player, admin CMS screens, cart, Stripe integration, orders, emails, reviews, analytics, or deployment. You may provide a minimal accessible placeholder home page proving the app builds. Stop after the Step 1 acceptance criteria pass.
+
+Required stable toolchain
+
+Use versions that are stable on the implementation date and commit the lockfile. As of the project decision date, the intended baseline is:
+
+Next.js 16 App Router, latest stable 16.x; never canary/beta;
+
+React version selected by that stable Next.js release;
+
+TypeScript strict mode;
+
+Node.js 24.x, pinned in package.json engines and an appropriate local version file;
+
+pnpm, with its exact package-manager version pinned;
+
+current stable Tailwind CSS only if needed for the minimal shell;
+
+@supabase/supabase-js and @supabase/ssr;
+
+Zod for environment and boundary validation;
+
+ESLint using the supported Next.js 16 setup plus Prettier, without introducing a second competing linter;
+
+Vitest for unit tests and Playwright prepared for later E2E tests;
+
+Supabase CLI migrations and pgTAP/Supabase database tests.
+
+Before installing, check the current official compatibility requirements. Avoid unnecessary dependencies.
+
+Repository and module architecture
+
+Use a clear domain-oriented layout equivalent to:
+
+src/
+  app/
+    (store)/
+    admin/
+    api/
+  components/
+    ui/
+  features/
+    catalog/
+    admin/
+    checkout/
+    fulfillment/
+  lib/
+    env/
+    supabase/
+    auth/
+    security/
+  types/
+supabase/
+  migrations/
+  tests/
+docs/
+tests/
+
+Do not create empty abstraction layers merely to match the tree. Use server-only guards for every module that can access secret keys or privileged data. Public, authenticated SSR, and privileged Supabase clients must be separate and impossible to import accidentally into a Client Component.
+
+Configure TypeScript with strict, noUncheckedIndexedAccess, and other safe compatible checks. Do not use any to silence design problems.
+
+Environment and secrets
+
+Create a validated environment module and .env.example containing placeholders only for at least:
+
+NEXT_PUBLIC_SITE_URL=
+NEXT_PUBLIC_SITE_NAME=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
+
+Use the current Supabase sb_publishable_... and sb_secret_... key model. Do not use legacy anon/service_role variable names in this new app. Validate public and server-only variables separately. Ensure all real .env* files are ignored except the example. Never print secret values, include them in errors, or expose SUPABASE_SECRET_KEY to the client.
+
+Supabase local project and migrations
+
+Initialize reproducible local Supabase configuration and SQL migrations. Do not make undocumented Dashboard-only schema changes.
+
+Create a minimal secure catalog model with proper foreign keys, checks, timestamps, and indexes. Use separate tables for public preview media and private paid deliverables so a public API cannot accidentally return private storage paths.
+
+The initial model must cover at least:
+
+A private admin allow-list keyed by auth.users.id. It must not expose admin identities publicly.
+
+products with:
+
+UUID primary key;
+
+unique validated slug;
+
+title, short description, and safe Markdown/plain-text long description (no arbitrary stored HTML);
+
+product type enum such as project_file, remake, stems, sample_pack;
+
+lifecycle status enum draft, published, archived;
+
+rights status enum unreviewed, original, licensed, rejected;
+
+integer price in minor currency units, uppercase ISO-style currency code, and optional compare-at price with valid checks;
+
+DAW name/version, BPM with a sensible range, musical key, duration, aggregate file size, included format labels, featured flag;
+
+SEO title/description fields with sensible length checks;
+
+created/updated/published timestamps and creating/updating admin IDs where appropriate.
+
+Normalized genres and product-genre joins.
+
+Normalized plugins and product-plugin requirements, including optional minimum version and whether each plugin is required.
+
+product_media for public cover/audio/video preview metadata and versioned storage object paths or a validated external video URL.
+
+product_deliverables for private archives/project files, including bucket, immutable object path, customer-facing filename, MIME type, bytes, version, SHA-256 checksum, active flag, and timestamps.
+
+Use names that remain clear in generated TypeScript types. Do not add order/payment/download tables yet; they belong to later steps.
+
+Add an updated_at mechanism. Add only indexes justified by the planned public catalog and admin queries, including published listing and slug lookup. Avoid premature generic indexes.
+
+Enforce at the database level that a product cannot be published unless:
+
+its rights status is original or licensed;
+
+it has a valid published_at value;
+
+its price/currency and required public metadata are valid.
+
+Archived or draft products must not be public.
+
+Authorization, grants, and RLS
+
+Treat RLS and SQL grants as one design. Enable RLS on every table in an exposed schema, revoke broad defaults, and grant back only required operations.
+
+Use a carefully written SECURITY DEFINER admin-check function with an empty/fixed search_path, least privilege, and explicit execute grants. Admin status must be determined from auth.uid() and the private allow-list. Do not trust an email, request field, or client claim as admin authorization.
+
+Required access matrix:
+
+anonymous/public visitor: may select only published, rights-cleared products and their public taxonomy/requirements/media;
+
+anonymous/public visitor: cannot see draft/archived/rejected/unreviewed products, private deliverable rows, admin identities, or private paths;
+
+anonymous/public visitor: cannot insert, update, or delete anything;
+
+authenticated non-admin: gains no mutation powers and cannot see private deliverables or admin data;
+
+authenticated allow-listed admin: can perform the catalog-management operations needed by the later CMS;
+
+privileged secret-key server client: reserved for narrowly reviewed server-only operations and never used to compensate for broken RLS.
+
+Write separate policies per operation rather than one opaque FOR ALL policy. Ensure joins cannot leak unpublished product relationships.
+
+Storage architecture
+
+Provision through migrations/config where supported:
+
+product-public: intentionally public, for cover images and compressed preview audio/video only;
+
+product-private: private, for customer deliverables.
+
+Only allow an allow-listed authenticated admin to create, replace, or delete objects. Do not grant anonymous writes. Do not grant customers or public users direct access to the private bucket. The later fulfillment server will issue short-lived signed URLs after verifying payment and a download grant.
+
+Document that large files must upload directly from the admin browser using Supabase TUS/resumable uploads or a signed upload token, using the direct storage hostname. They must never traverse a Vercel Function because Vercel Function payloads are unsuitable for large music archives. Prefer new immutable object paths over overwrite/upsert.
+
+Seed data
+
+Provide deterministic local seed data only if it helps test policies. Use fictional original product names and generic metadata. Do not use famous artists, song titles, album art, KSHMR assets/names as product branding, commercial stems, or copyrighted audio. Do not seed broken media URLs. Never seed a real admin email or password.
+
+Tests
+
+Add database tests that prove both allowed and denied behavior. At minimum test:
+
+anon sees a published rights-cleared product;
+
+anon does not see draft, archived, rejected, or unreviewed products;
+
+anon cannot mutate catalog tables;
+
+authenticated non-admin cannot mutate catalog tables;
+
+allow-listed admin can perform intended CRUD;
+
+public taxonomy/media joins reveal data only for published products;
+
+no public/authenticated non-admin query can read product_deliverables or the admin allow-list;
+
+storage write policies reject anon/non-admin and allow admin in the correct bucket/path;
+
+the publication constraint rejects an unreviewed product.
+
+Add focused unit tests for environment validation and any security helper that can be tested without mocking away its behavior. Add a minimal application smoke test. Tests must fail closed.
+
+Baseline application security
+
+Add safe baseline response headers: X-Content-Type-Options, a strict referrer policy, an appropriate permissions policy, and clickjacking protection. Document the production CSP design, but do not ship a fake or broken CSP before all required origins are known.
+
+Set poweredByHeader: false.
+
+Keep server-side code outside the client graph.
+
+Validate every trust boundary with Zod or database constraints.
+
+Never render unsanitized stored HTML.
+
+Do not log credentials, full payment/customer records, tokens, or private storage URLs.
+
+Add placeholders/documentation for later rate limiting; do not pretend an in-memory limiter in a serverless process is production protection.
+
+CI and developer experience
+
+Create scripts with clear names for development, lint, type-check, unit tests, database tests, E2E preparation, and production build. Add a GitHub Actions CI workflow that uses the lockfile and runs the checks feasible without production secrets. Include Supabase database reset/tests in CI if the official local-container flow is available. Add dependency-update configuration if appropriate.
+
+Create a README with exact setup commands for:
+
+required Node/pnpm/Docker/Supabase CLI prerequisites;
+
+installing dependencies;
+
+copying the environment example;
+
+starting/resetting local Supabase;
+
+generating database TypeScript types from the schema;
+
+running the app and every test/check;
+
+linking a future hosted Supabase project without committing secrets;
+
+deploying later to Vercel without claiming deployment is part of this step.
+
+Create:
+
+docs/ARCHITECTURE.md with the full end-state topology, data boundaries, caching strategy, and why large uploads bypass Vercel;
+
+docs/SECURITY.md with assets, actors, trust boundaries, threats, controls, secret handling, admin-only auth, RLS rules, and future payment/download requirements;
+
+docs/ROADMAP.md listing Steps 2–9 and explicitly marking them unimplemented;
+
+a short decision record that explains why hosted Stripe Checkout, guest checkout, private Supabase delivery storage, and webhook-authoritative fulfillment are the future design.
+
+Step 1 acceptance criteria
+
+Do not finish until all applicable criteria are met:
+
+Fresh install from the committed lockfile succeeds.
+
+Lint succeeds.
+
+Type-check succeeds.
+
+Unit/smoke tests succeed.
+
+Production build succeeds without real production secrets, using a documented safe validation strategy for build/CI.
+
+supabase db reset succeeds locally.
+
+Supabase/pgTAP database and RLS tests succeed.
+
+Generated database TypeScript types match the migration schema.
+
+No committed credential, secret, real customer/admin data, copyrighted music asset, or private deliverable exists.
+
+The public client cannot read drafts, private deliverables, or admin data, as demonstrated by tests.
+
+Documentation describes what is implemented and does not claim Steps 2–9 are complete.
+
+If a tool such as Docker is unavailable, still create correct reproducible files, run every other check, and report the exact unverified command as a blocker. Do not replace a failed test with an assertion that the design is correct.
+
+Final response format
+
+When finished, report:
+
+concise outcome;
+
+architecture and security decisions actually implemented;
+
+important files created/changed;
+
+exact commands run and pass/fail results;
+
+assumptions and blockers;
+
+confirmation that no Step 2+ feature was implemented;
+
+the recommended next prompt title: Step 2 — Brand system and responsive storefront shell.
+
+Do not proceed to Step 2.
+
+7. Official references used to validate this plan
+
+Next.js production guidance
+
+Vercel supported Node.js versions
+
+Vercel Function limits
+
+Supabase API keys
+
+Supabase Row Level Security
+
+Supabase Storage access control
+
+Supabase serving public/private assets
+
+Supabase resumable uploads
+
+Supabase SSR clients for Next.js
+
+Stripe Checkout fulfillment
+
+Stripe webhook signature verification
+
+Stripe dynamic payment methods
+
+EU consumer rules for digital content
+
+EU returns and digital-content withdrawal exception
+
+8. Exact prompt for the coding AI — Step 2
+
+Copy everything inside the following block into the coding AI after Step 1 has been implemented. Give that AI access to the existing repository and the Step 1 completion report. Do not use this prompt against a blank replacement repository.
+
+You are implementing Step 2 of an existing production project:
+
+STEP 2 — ORIGINAL BRAND SYSTEM AND RESPONSIVE STOREFRONT SHELL
+
+This is an implementation task, not a proposal or a mockup-only exercise. Work in the existing repository, preserve the Step 1 architecture and security controls, implement the requested code, run the verification commands, inspect the rendered result at several viewport sizes, and stop at the Step 2 boundary.
+
+Read before changing anything
+
+1. Read the entire repository, especially README.md, docs/ARCHITECTURE.md, docs/SECURITY.md, docs/ROADMAP.md, package.json, the App Router structure, lint/type/test configuration, Supabase migrations and tests, middleware/proxy code, environment examples, and the Step 1 completion report.
+2. Read the canonical Music Project Store master plan and Step 1 prompt supplied with the repository. Its product, legal, security, data, deployment, and scope decisions remain authoritative.
+3. Inspect git status before editing. Preserve all user changes and do not reset, discard, or rewrite unrelated work.
+4. Use the dependency versions and package manager already locked by the repository. Do not perform broad upgrades or replace the foundation merely because you prefer a different stack.
+
+Mandatory preflight gate
+
+Before implementing Step 2, verify Step 1 instead of assuming it is complete:
+
+- install dependencies with the repository's frozen lockfile command;
+- run lint, TypeScript checking, existing unit/integration tests, and a production build;
+- run the local Supabase reset/migration and pgTAP/RLS test workflow when the required local runtime is available;
+- check that no secret or real credential is committed;
+- check that public clients cannot access draft products, admin-only tables, private storage objects, or privileged mutations;
+- confirm that the project still uses strict TypeScript, the Next.js App Router, server components by default, Supabase with RLS, and separate public-preview/private-deliverable storage boundaries.
+
+If a small Step 1 defect blocks Step 2, fix it first and identify that fix separately in the final report. If the foundation, migrations, RLS, or secret handling are materially missing or unverifiable, stop and report the blocker; do not hide it under visual work. Never weaken security or tests to make a command pass.
+
+Project facts that must remain true
+
+- This is a worldwide digital store for music producers selling only content the owner has the right to distribute: original/authorized project files and educational remakes, original stems, original WAV/sample packs, and optional free products.
+- No customer accounts or customer login exist. Only the owner/admin will authenticate.
+- Supabase is the database/auth/storage platform. Vercel is the deployment target.
+- Future checkout will use Stripe-hosted Checkout. Future order creation and delivery will be webhook-authoritative and idempotent.
+- Public cover images and preview media are separate from private paid deliverables.
+- A product may eventually be publicly published only when its rights status is `original` or `licensed`.
+- Do not copy the visual identity, code, layout, product wording, media, or assets of FLPStudio.com, Splice, a producer, artist, label, DAW vendor, or sample-pack company. Category inspiration is allowed; imitation is not.
+- Do not introduce third-party music, album art, artist likenesses, trademarks used as branding, extracted commercial stems, or files without redistribution rights.
+
+Step 2 objective
+
+Build a polished, original, mobile-first visual system and the reusable public storefront shell that later steps can connect to real catalog data and commerce. The result should already feel like a credible premium music-production store at every common viewport, but must not pretend that unfinished commerce features work.
+
+This step includes:
+
+- the visual direction and semantic design tokens;
+- global typography and layout primitives;
+- accessible reusable UI components required by the shell;
+- the global header, mobile navigation, main-content structure, and footer;
+- a complete home-page presentation using clearly isolated typed fixture data;
+- static presentation shells for essential public routes so internal navigation has no broken links;
+- global loading, error, empty, and not-found presentation patterns;
+- basic site metadata and social-preview fallbacks;
+- responsive, accessibility, visual-regression, and performance verification appropriate to this step;
+- design-system and content-guidance documentation.
+
+This step explicitly excludes:
+
+- fetching the live catalog from Supabase;
+- production catalog filtering, sorting, search, pagination, product-detail logic, or structured product SEO;
+- real audio/video preview playback or waveform processing;
+- admin sign-in, the admin CMS, uploads, or content publishing workflows;
+- persistent cart behavior, discount logic, Stripe, checkout, webhooks, orders, email, downloads, or fulfillment;
+- customer accounts of any kind;
+- reviews, analytics, newsletter submission, support-ticket submission, or other backend integrations;
+- final lawyer-reviewed legal policies;
+- production deployment.
+
+Do not add fake interactivity. A visible control must either work within this step, navigate to a valid route, be an honest disabled/coming-later state where appropriate, or be omitted until its implementation step. Never simulate a successful checkout, download, newsletter signup, audio player, review, or contact submission.
+
+Visual direction
+
+Create an original identity with the following art direction:
+
+- premium, precise, energetic, and producer-focused rather than gamer-like or corporate;
+- a dark graphite/near-black foundation, warm off-white typography, restrained neutral surfaces, and one high-energy accent in the chartreuse/lime family;
+- a secondary cool violet or blue may be used sparingly for technical/audio-data states, never as an uncontrolled rainbow gradient;
+- editorial typography paired with technical details, subtle grid/waveform/routing-line motifs, crisp borders, and measured depth;
+- dense enough to communicate useful product information, but with calm spacing and an obvious hierarchy;
+- motion should clarify state and hierarchy, not decorate every element;
+- no excessive glow, glassmorphism, gradient text, giant mobile headlines, autoplay media, scroll hijacking, custom cursor, or decorative animation library.
+
+The identity must not depend on a permanent brand name that has not been approved. Implement a single central site configuration for name, short description, support address placeholder, and social metadata. If the repository has no confirmed name, use `Audio Project Store` only as an explicitly documented working label and make replacement a one-file or environment-level change. Do not invent claims, a company history, social accounts, awards, sales counts, ratings, or customer quotes.
+
+Create an original, simple geometric brand mark suitable for a favicon and header—such as an abstract waveform/routing glyph—using local SVG/CSS that you author. Do not copy an existing logo or turn text into an inaccessible image. The text wordmark must remain real text.
+
+Design-token requirements
+
+Centralize semantic tokens instead of scattering raw values through components. Include, at minimum:
+
+- canvas, surface, elevated surface, inset surface;
+- primary text, secondary text, muted text, inverse text;
+- subtle border, strong border, focus ring;
+- primary accent and its readable foreground;
+- informational/secondary accent;
+- success, warning, destructive, and their readable foreground/background variants;
+- spacing scale, content/container widths, corner radii, shadows, z-index layers, transition durations, and easing;
+- typography roles for display, heading, body, label, caption, price, and technical/monospace data.
+
+Use CSS custom properties as the semantic source of truth and map them into the existing styling system. Prefer perceptually consistent color notation if supported by the existing toolchain. Validate contrast; do not assume an accent color is accessible because it looks bright. Document the final token values and their intended usage in `docs/DESIGN_SYSTEM.md`.
+
+Use no more than two font families. Load them through `next/font` so they are self-hosted by the application with no browser request to a font provider. Define sensible system fallbacks and avoid loading unnecessary weights or subsets.
+
+Reusable component requirements
+
+Adapt naming to the existing repository, but create a coherent small component layer rather than one monolithic home page. At minimum, provide:
+
+- `SiteHeader` and an accessible mobile navigation dialog/sheet;
+- `SiteFooter`;
+- `Container`, section/stack/grid layout primitives where they prevent repetition;
+- heading/text primitives or consistently documented typography classes;
+- `Button` and `IconButton` variants with hover, active, focus-visible, disabled, and loading-safe states;
+- `Badge`/tag treatment;
+- `Price` formatter built on `Intl.NumberFormat`, not string concatenation;
+- `ProductCard` presentation component using a typed view model;
+- `ProductArtwork` or cover treatment with a stable aspect ratio;
+- `SectionHeading`;
+- `EmptyState`, `ErrorState`, and skeleton/loading treatment;
+- a visually hidden utility and a keyboard-visible skip link;
+- the minimal accessible dialog/sheet primitive required for mobile navigation.
+
+Reuse high-quality primitives already installed in Step 1. If the repository intentionally uses shadcn/ui or Radix primitives, add only what this step needs and keep the generated source owned by the repository. Do not install a large UI kit, carousel, animation system, state manager, or icon pack if an existing dependency or a small local implementation is sufficient. Use one consistent SVG icon set if already present; never use emoji as interface icons.
+
+Default to React Server Components. Add `use client` only at the smallest interaction boundary, principally the mobile navigation and any genuinely interactive disclosure. Do not turn the layout or whole home page into a client component.
+
+Accessibility behavior
+
+- Use semantic landmarks: header, nav, main, sections with meaningful headings, and footer.
+- The first keyboard action must make a skip-to-content link visible.
+- Every interactive element must be reachable and operable with a keyboard and have an obvious focus-visible state.
+- The mobile menu must expose an accessible name, trap/focus correctly, close with Escape, return focus to its trigger, and prevent accidental background interaction while open.
+- Icon-only buttons need accessible names. Decorative icons and motifs must be hidden from assistive technology.
+- Preserve logical heading order. Do not choose heading levels for their visual size.
+- Text and meaningful UI contrast must meet WCAG 2.2 AA. Aim for at least 4.5:1 for normal text and 3:1 for large text and meaningful component boundaries.
+- Use at least 44-by-44 CSS-pixel practical pointer targets for primary controls where layout allows, never below the WCAG 2.2 minimum without an applicable exception.
+- Respect `prefers-reduced-motion`; essential meaning cannot depend on motion, hover, color alone, or audio.
+- Do not use placeholder text as the only label. Do not suppress focus outlines without a stronger replacement.
+- Avoid nested interactive elements in cards. If the card title is the link, secondary controls must be separate siblings.
+
+Responsive requirements
+
+Implement mobile first and inspect at 320, 375, 768, 1024, 1440, and 1920 CSS pixels wide. The page must have no unintended horizontal overflow at 320 pixels, no clipped focus rings, no unreadable technical metadata, and no breakpoint where the navigation or cards collide.
+
+- Use fluid type and spacing only within controlled minimum/maximum values.
+- Keep reading text to a sensible line length.
+- Product grids should progress naturally from one column to multiple columns without creating tiny cards.
+- Header controls must remain understandable without relying on desktop-only labels.
+- The footer must reflow into a clear hierarchy rather than a compressed row.
+- Stable aspect ratios and explicit media dimensions must prevent layout shift.
+
+Public information architecture and routes
+
+Build the following routes as polished presentation shells. Use the route conventions already established by the repository and do not create competing directory structures.
+
+1. `/` — complete home page.
+2. `/catalog` — a visually complete catalog shell using typed fixtures, with a clear note in code/docs that live data and real filtering arrive in Step 3. Do not render non-working filter widgets.
+3. `/free` — a small free-download discovery shell using fixtures; no fake download action.
+4. `/cart` — a polished empty-cart state only. Do not create cart persistence or checkout controls.
+5. `/about` — concise, truthful mission and originality statement without invented company history.
+6. `/faq` — initial buyer questions about file types, compatibility, licensing, and future delivery, carefully worded so incomplete functionality is not claimed as live.
+7. `/contact` — a presentation shell with support guidance; do not add a non-functional form. Use the central support configuration and clearly document any placeholder.
+8. `/legal/license`, `/legal/refunds`, `/legal/privacy`, and `/legal/terms` — clearly labelled draft structure pages for later legal review, carrying `noindex` metadata until approved. They must not pretend to be final legal advice or final policies.
+
+Also implement a branded `not-found` page, a route-level/global error presentation following Next.js requirements, and useful loading/skeleton UI where it is actually exercised. Internal navigation links shown to users must resolve without a 404. Do not expose an admin link in the public header; the future admin entry point is deliberately private/unadvertised.
+
+Header requirements
+
+- compact brand mark and text wordmark;
+- desktop links for Catalog, Project Files, Stems, Sample Packs, Free, and About, with category links represented as query/link targets that Step 3 can honor;
+- a Cart link showing zero items and leading to the valid empty-cart shell;
+- no customer sign-in or account link;
+- accessible mobile navigation containing the same destinations;
+- optional restrained announcement text only if it is truthful and configured centrally; do not use a fake countdown or fake scarcity.
+
+Home-page requirements
+
+Create a purposeful narrative, not a collection of generic blocks:
+
+1. Hero: clearly explain that buyers can study and use detailed production resources. Include one primary CTA to `/catalog` and one secondary CTA to `/free`. Use an original CSS/SVG technical visual, not stock/copyrighted artwork.
+2. Trust/value strip: three short, supportable principles such as transparent compatibility details, original/authorized content, and secure checkout/delivery architecture. Avoid claiming production payment or instant delivery is already live in this development step.
+3. Product-type discovery: Project Files, Stems, Sample Packs, and Free Downloads, each with a distinct but coherent original visual treatment and a valid destination.
+4. Featured resources: 4–8 product cards populated from isolated typed fixtures. Demonstrate different product types, prices, DAWs, BPM/key values, and compatibility tags without artist names or copied brand artwork.
+5. Technical transparency section: show why DAW version, plugins, key, BPM, formats, file size, and license information will be visible before purchase.
+6. Originality/licensing statement: explain that the store publishes only original or properly licensed material and is independent of artists, labels, and DAW vendors.
+7. Free-resource teaser: route visitors to `/free`; do not collect an email yet.
+8. Compact FAQ preview linked to `/faq`.
+
+Suggested tone: direct, technically literate, confident, and concise. Avoid hype such as “industry-leading,” “official,” “guaranteed hit,” “used by top producers,” or “best on the market.” Do not use lorem ipsum in the final result.
+
+Fixture-data rules
+
+Step 2 may use a small set of typed fictional presentation fixtures so the layouts can be judged. Keep them in an unmistakable location such as `src/features/catalog/fixtures` and make all consumers depend on a view-model interface that Step 3 can replace with mapped Supabase data.
+
+- Use fictional product titles and original locally created abstract cover treatments.
+- Do not use real artists, song titles, album covers, label names, testimonials, ratings, sales counts, or downloadable audio.
+- Mark fixture modules clearly as non-production data.
+- Do not insert fixtures into Supabase or modify the Step 1 production schema merely for this visual step.
+- Do not show a play button when no player exists.
+- Use deterministic artwork variants so screenshots and tests are stable.
+
+Images and media
+
+Use local original SVG/CSS assets for the shell and fixtures. If raster images are necessary, use `next/image`, provide intrinsic dimensions or a stable fill container, define accurate `sizes`, and avoid lazy-loading the principal above-the-fold image when that harms LCP. Narrowly constrain any existing remote-image allowlist; do not add broad wildcard hosts. No externally hosted fonts, hotlinked media, base64 blobs in components, or copyrighted placeholder assets.
+
+Motion and interaction
+
+Use CSS transitions for small state changes. A subtle entrance or technical motif is acceptable only if it remains lightweight, does not delay content, does not cause layout shift, and is removed/reduced under `prefers-reduced-motion`. Avoid interval timers and continuous work on hidden tabs. The menu and disclosures must remain usable if animation is disabled.
+
+Performance requirements
+
+- Keep the page server-rendered and static where possible.
+- Keep client-side JavaScript confined to small islands.
+- Do not add third-party scripts, trackers, chat widgets, embedded video players, or autoplay audio.
+- Use `next/font`, optimized image handling, stable dimensions, and lazy loading below the fold.
+- Avoid barrel imports or dependency patterns that pull entire libraries into client bundles.
+- In a production-mode local run, target Lighthouse mobile scores of at least 90 Performance, 95 Accessibility, 95 Best Practices, and 90 SEO for `/`; record the actual results rather than fabricating them.
+- Treat LCP <= 2.5 seconds, INP <= 200 milliseconds, and CLS <= 0.1 at the 75th percentile as the eventual field goals. Lab measurements in this step are evidence, not a guarantee of field performance.
+- If environment limits prevent Lighthouse, document the exact limitation and still inspect build output, route rendering, layout shift risks, and client boundaries.
+
+Metadata
+
+Implement honest global metadata through the App Router metadata API:
+
+- title template and useful default title;
+- accurate short description;
+- metadata base via validated public-site URL configuration;
+- basic Open Graph/Twitter fallback using only local original assets;
+- favicon/app icons from the original mark;
+- robots behavior that prevents draft legal shells from indexing.
+
+Do not add product JSON-LD, sitemap catalog logic, merchant feeds, or rich product metadata yet; those belong with real data in Step 3 and later SEO work.
+
+Documentation deliverables
+
+Create or update:
+
+1. `docs/DESIGN_SYSTEM.md` — visual principles, palette/tokens, typography, spacing, radii, elevation, components, state behavior, responsive rules, accessibility requirements, asset rules, and instructions for replacing the temporary site name.
+2. `docs/CONTENT_GUIDE.md` — voice, terminology, capitalization, product naming pattern, prohibited unsupported claims, legal/originality language, and how to refer to third-party DAWs without implying affiliation.
+3. `docs/ROADMAP.md` — mark Step 2 complete only after its acceptance checks pass; leave Steps 3–9 pending.
+4. README only where required to explain new commands, route previews, or environment configuration.
+
+Keep documentation aligned with actual code. Do not claim a Lighthouse score, accessibility conformance, or completed route that was not verified.
+
+Testing and visual QA
+
+Use the repository's existing test tools. Add focused dependencies only when necessary and keep them in development dependencies.
+
+At minimum, add or update tests for:
+
+- price formatting across at least two currencies/locales relevant to the component contract;
+- button/link variants and disabled behavior;
+- header navigation destinations;
+- opening, keyboard traversal, Escape closing, and focus return for the mobile menu;
+- skip-link behavior;
+- rendering every fixture-driven card without nested interactive controls;
+- all visible internal links on the core shell resolving to a non-404 route;
+- home, catalog, free, cart, and not-found presentation at mobile and desktop viewport sizes;
+- no uncaught browser errors, React hydration errors, or failed resource requests on core pages;
+- automated accessibility scanning on `/`, `/catalog`, and the open mobile menu, with no serious or critical violations.
+
+Use Playwright (or the already configured equivalent) to capture review screenshots at least at 375x812, 768x1024, and 1440x900 for the home page, plus the open mobile menu. Store test snapshots/artifacts according to repository convention; do not commit huge transient reports unless the repository intentionally tracks them. Actually inspect the screenshots for clipping, awkward wraps, low contrast, overlap, and excessive empty space.
+
+Required verification before completion
+
+Run the exact scripts defined by the repository for:
+
+- formatting check;
+- lint;
+- TypeScript type checking;
+- unit/component tests;
+- browser/end-to-end and accessibility tests;
+- production build;
+- any Step 1 database/RLS regression suite affected by your edits.
+
+Then run a production-mode preview and inspect all Step 2 routes. If a command fails, fix the cause or report the exact blocker. Do not delete, skip, soften, or rewrite a meaningful test solely to obtain green output.
+
+Acceptance criteria
+
+Step 2 is complete only when all of the following are true:
+
+1. Step 1 checks still pass, or a precisely described environment limitation is the only unverified item.
+2. The implementation is visibly original and follows the documented design system.
+3. The home page and required route shells render correctly from 320 through 1920 pixels without unintended horizontal overflow.
+4. Header, mobile navigation, skip link, and all visible links are keyboard accessible and lead to valid destinations.
+5. WCAG 2.2 AA contrast targets are met and automated core-page scans contain no serious or critical issues.
+6. There are no hydration warnings, uncaught console errors, or knowingly broken resource requests on core routes.
+7. Fixture content is fictional, typed, deterministic, isolated, and never inserted into the production database.
+8. No fake player, checkout, download, email form, review, filter, search, or admin behavior has been introduced.
+9. No customer authentication or public admin link has been added.
+10. No secret, third-party copyrighted asset, private deliverable, or real customer data is committed.
+11. Images/fonts are locally controlled and optimized; client-side code is limited to justified interaction islands.
+12. The production build and the configured automated test suite pass.
+13. Documentation matches the implemented system and keeps all Step 3+ work explicitly pending.
+
+Final response format
+
+When finished, provide:
+
+1. a concise implementation outcome;
+2. the final visual direction and major UX decisions;
+3. important files and routes created or changed;
+4. exact verification commands and their pass/fail results;
+5. actual Lighthouse/accessibility results if measured;
+6. screenshot paths or review artifacts;
+7. any Step 1 fixes, assumptions, or remaining blockers;
+8. explicit confirmation that live catalog data, audio, admin, cart persistence, Stripe, orders, delivery, and deployment were not implemented;
+9. the recommended next prompt title: `Step 3 — Live catalog, product pages, filters, SEO, and audio previews`.
+
+Stop after Step 2. Do not proceed to Step 3.
+
+Step 2 validation references
+
+Next.js image optimization
+
+Next.js font optimization
+
+Next.js production checklist
+
+WCAG 2.2 quick reference
+
+Web Vitals thresholds
+
+shadcn/ui documentation
+
+9. Exact prompt for the coding AI — Step 3
+
+Copy everything inside the following block into the coding AI only after Step 2 has been implemented. Give it the existing repository, the complete Step 1 and Step 2 completion reports, and this canonical plan. Do not use the prompt to create a replacement repository.
+
+You are implementing Step 3 of an existing production project:
+
+STEP 3 — LIVE CATALOG, PRODUCT PAGES, FILTERS, SEO, AND AUDIO PREVIEWS
+
+This is an implementation task. Work in the existing repository, preserve the secure foundation and original design system from Steps 1–2, implement the requested code and migrations, run all verification, inspect the rendered result, and stop at the Step 3 boundary.
+
+Read before editing
+
+1. Read the full repository and all project instructions, especially README.md; docs/ARCHITECTURE.md, docs/SECURITY.md, docs/ROADMAP.md, docs/DESIGN_SYSTEM.md, and docs/CONTENT_GUIDE.md; package.json and lockfile; the App Router; Supabase migrations, generated types, storage policies, and pgTAP tests; the Step 1 and Step 2 completion reports; and the canonical Music Project Store plan.
+2. Inspect git status and preserve user changes. Never reset, discard, or rewrite unrelated work.
+3. Use the repository's pinned Node, pnpm, Next.js, TypeScript, Supabase, styling, and test stack. Do not perform broad dependency upgrades or replace working architecture.
+4. Inspect the actual Step 1 schema before naming columns, relations, enums, buckets, or generated types. Adapt to it rather than inventing a parallel catalog model.
+
+Mandatory preflight gate
+
+Before implementing Step 3:
+
+- install with the frozen lockfile command;
+- run formatting, lint, TypeScript, existing unit/component tests, browser/accessibility tests, and the production build;
+- run the local Supabase reset/migrations, seed, generated-type check, and pgTAP/RLS tests when the required local runtime is available;
+- launch the Step 2 shell and inspect the home page, catalog shell, mobile menu, and core routes at mobile and desktop sizes;
+- confirm the public design is original and that no customer login, public admin link, secret exposure, fake commerce, or private deliverable exposure was introduced.
+
+If a small earlier-step regression blocks this work, fix it first and report it separately. If the secure schema, RLS, storage separation, or Step 2 component system is materially absent or cannot be verified, stop and report the blocker. Do not cover a broken foundation with new features, weaken RLS, or delete meaningful tests.
+
+Permanent project rules
+
+- Public visitors never create accounts or sign in. Only manually provisioned admins will authenticate in Step 4.
+- Supabase Postgres is the catalog source of truth. Supabase Storage holds intentionally public covers/previews separately from private paid deliverables.
+- Vercel remains the deployment target.
+- Products are public only when lifecycle status is published and rights status is `original` or `licensed`.
+- No copyrighted commercial stems, master recordings, third-party packs, artist/label artwork, fabricated reviews, or copied competitor content may be added.
+- Future payment uses Stripe-hosted guest Checkout. After an immediate or delayed payment is authoritatively confirmed by a verified Stripe webhook, the buyer must automatically receive the secure package-access email without admin action, targeting delivery within 60 seconds under normal conditions. The future email contains a secure expiring access link, not a large package attachment or permanent public URL.
+- Step 3 must preserve that future fulfillment contract but must not implement Stripe, orders, emails, download grants, private-file delivery, or customer authentication.
+
+Step 3 objective
+
+Replace Step 2's presentation-only catalog fixtures with a secure, fast, server-rendered catalog backed by the existing Supabase schema. Deliver useful discovery, detailed product pages, real public preview playback, and technically correct SEO while retaining the original Step 2 visual system.
+
+This step includes:
+
+- server-only public catalog repositories and typed DTO/view-model mapping;
+- real Supabase-backed `/catalog`, `/free`, and `/products/[slug]` pages;
+- URL-based search, filters, sorting, pagination, result counts, active-filter state, and empty/error/loading states;
+- product technical/compatibility information, safe descriptions, related products, and public preview media;
+- a lightweight accessible audio-preview experience;
+- deliberate public-data caching and a documented future invalidation contract for Step 4;
+- per-page metadata, canonical URLs, robots behavior, sitemap generation, Open Graph data/images, Product and Breadcrumb structured data where truthful;
+- additive database migrations/indexes/functions only where the real query shape requires them;
+- database, unit, component, E2E, accessibility, SEO, and performance tests;
+- documentation of catalog queries, URL contracts, media behavior, SEO, and measured query plans.
+
+This step excludes:
+
+- admin authentication, MFA UI, product CRUD, publishing, and uploads;
+- cart state, add-to-cart behavior, discounts, Stripe, checkout, webhooks, orders, refunds, email, download grants, fulfillment, or private-file access;
+- customer accounts or login;
+- verified reviews, ratings, analytics, recommendations based on personal data, newsletter collection, or contact submission;
+- final legal text or production deployment.
+
+Do not add fake interactions. Until Step 5, product pages may show price and compatibility details but must not display a working-looking purchase or checkout button. Omit it or use an explicitly non-commerce launch state defined by existing product configuration. Free products must not expose a fake download button before a secure free-delivery flow exists.
+
+Catalog data architecture
+
+Create a small server-only catalog data layer under the existing catalog feature rather than querying Supabase ad hoc from page components.
+
+- Public storefront reads must use the public/publishable Supabase client so RLS is exercised. Never use `SUPABASE_SECRET_KEY` to make public catalog reads convenient.
+- Initial page content is fetched in Server Components. Do not fetch the entire catalog into the browser for client-side filtering.
+- Select explicit public columns and relations. Never use `select('*')` for storefront product queries.
+- Return narrow, typed DTOs that cannot include admin IDs, audit data, private deliverable rows, private bucket paths, or other non-public fields.
+- Map database rows to stable view models at one boundary. Remove the Step 2 fixture dependency from production pages while retaining fixtures only where isolated component tests genuinely need them.
+- Use generated Supabase database types and regenerate them after schema changes. Do not maintain a conflicting handwritten copy of database row types.
+- Treat RLS as the authorization boundary even when using a view or function. Any exposed view must use security-invoker behavior. Any exposed function must be explicitly security invoker, use schema-qualified objects/a safe search path, validate and clamp arguments, expose only required output columns, and have minimal execute grants.
+- A missing, draft, archived, unreviewed, rejected, or otherwise non-public product slug must resolve as a normal 404 to public visitors without revealing that a private record exists.
+
+Database migrations and search
+
+First determine whether the existing schema and indexes already support the required queries. Add reversible, additive Supabase migrations only when necessary. Do not destructively rename or rebuild Step 1 tables for aesthetic reasons.
+
+Implement user-facing text search with parameterized PostgreSQL full-text search, not `%term%` scans across the catalog and never SQL string concatenation.
+
+- Prefer a stored weighted `tsvector` built from public product title and descriptions, using a suitable text-search configuration for technical music terms, plus a GIN index.
+- Give titles greater relevance than descriptions. Do not pull private or admin-only text into the search document.
+- Use a safe user-oriented query parser such as `websearch_to_tsquery` through a parameterized SQL function/RPC if the ordinary Supabase query API cannot express the complete ranked query cleanly.
+- Search rank is available only when a query exists; otherwise use the chosen deterministic sort.
+- Every sort has a deterministic tie-breaker so pagination cannot shuffle between requests.
+- Add indexes for actual published-catalog filters, joins, and ordering only after reviewing the query. Consider partial/composite indexes where they match the real predicate, but do not over-index.
+- Record representative `EXPLAIN (ANALYZE, BUFFERS)` results with realistic local seed volume. A sequential scan on a tiny test table is not automatically a defect; explain decisions rather than forcing an index dishonestly.
+- Add pgTAP tests proving search/filter functions cannot return drafts, archived products, rejected/unreviewed rights states, private media, private paths, or admin fields.
+
+Local development and test data
+
+The production application must work with an empty catalog and show a useful empty state. For local development and automated tests, create a deterministic, repeatable seed with enough fictional products to exercise every filter, sort, pagination path, and related-product rule.
+
+- Seed data must be clearly marked development/test-only and must never run automatically against production.
+- Use fictional titles, original descriptions, original local abstract cover assets, and rights statuses that intentionally exercise allow/deny cases.
+- Include unpublished/rejected rows solely to prove RLS and 404 behavior.
+- Use no artist names, famous song titles, copied album art, reviews, sales numbers, or third-party pack content.
+- Provide a documented idempotent local-media seeding command if Supabase Storage objects are required.
+- Any audio used for automated tests must be a very small, self-created/generated synthetic test clip with no third-party rights issue. Do not present it as a commercial product preview and do not commit large media files.
+
+URL contract and input validation
+
+Make catalog state shareable and back/forward-navigation friendly. The server-rendered result is authoritative and is derived from validated search parameters.
+
+Support, where the existing schema provides the data:
+
+- `q` for text search;
+- one or more product types;
+- one or more genres;
+- DAW and compatible DAW version;
+- one or more required plugins, plus a plugin-free option if it can be defined truthfully;
+- BPM minimum/maximum;
+- musical key;
+- minimum/maximum price only under a coherent currency rule;
+- sorting by relevance when searching, newest, price ascending, price descending, and title;
+- bounded page-number pagination with a documented fixed page size, preferably 24 unless the design or measured performance justifies another value.
+
+Define one canonical parameter naming/serialization scheme and test it. Normalize repeated/multi-select values into a stable order, remove defaults and empty values, reset `page` when filters change, and retain active filters when sort/page changes.
+
+- Validate with a schema at the server boundary.
+- Bound query length, array counts, numeric ranges, page number, and supported enum/slug values.
+- Treat malformed parameters as a recoverable user state: normalize or show a useful validation result without a server crash, SQL error, or reflected unsafe content.
+- Never compare or sort numeric prices across different currencies as though they were equivalent. Enable global price filtering/sorting only if the active catalog uses one configured currency; otherwise require a selected currency or omit those controls. Do not invent exchange rates.
+- Do not place secrets, private identifiers, or storage object paths in query strings.
+
+Catalog interface
+
+Replace the `/catalog` shell with a polished live experience that remains consistent with Step 2.
+
+- Use a semantic GET search/filter form so the core flow works with progressive enhancement.
+- Provide an accessible search field, desktop filter region, mobile filter dialog/sheet, sort control, result count, active-filter chips, individual removal, and a clear-all action.
+- Filter controls need real labels, fieldsets/legends where appropriate, visible focus, sufficient targets, and useful selected-state announcements.
+- On submit/change, preserve expected focus and scrolling. Do not create a full-page client-rendered SPA or a fragile optimistic result count.
+- Use loading UI that preserves the grid's geometry and avoids layout shift.
+- Render 0-result guidance that keeps current filters visible and offers clear reset actions.
+- Distinguish “no published products exist” from “no products match these filters.”
+- Product cards display only useful truthful data: original cover, product type, title, DAW/version where applicable, BPM/key where applicable, concise compatibility tags, price, and a functioning preview control only when public preview audio exists.
+- Do not truncate the product title so aggressively that products become indistinguishable.
+- Preserve visible result context when using browser back/forward navigation.
+
+Connect `/free` to the real catalog using the actual free-product rule defined by the schema, while keeping secure delivery out of scope. It must handle no results honestly and must not expose paid/private files.
+
+Product detail route
+
+Implement `/products/[slug]` with a single public product query shared by page rendering and metadata generation without duplicating work unnecessarily.
+
+Each public product page must include:
+
+- breadcrumb navigation;
+- title, short description, product type, price/currency, cover art, and available public preview media;
+- a prominent compatibility summary before any future purchase area;
+- DAW and minimum/exact version semantics, BPM, key, duration, included formats, aggregate size, genres, required plugins and versions, update date, and license summary when present;
+- explicit plugin requirements and a clear “check compatibility before purchase” treatment;
+- safe long-form content rendered from the repository's permitted plain-text/Markdown format with raw HTML disabled and a strict element/link allow-list;
+- an originality/independence notice appropriate to the product data without claiming legal clearance beyond the stored rights state;
+- related products selected by a deterministic, documented rule using type/genre compatibility, excluding the current product and all non-public rows;
+- useful missing-data behavior rather than invented values or empty labels.
+
+Do not expose deliverable filenames, bucket paths, checksums, admin notes, rights documents, or internal IDs in HTML, metadata, JSON-LD, RSC payloads, source maps, or client props.
+
+Audio-preview implementation
+
+Build a lightweight preview system around the native `HTMLMediaElement`; do not add a waveform/audio framework unless measured requirements prove it necessary.
+
+- Audio never autoplays.
+- Use `preload="none"` or an equally conservative policy so rendering a card grid does not download every preview. Verify with a browser network test that preview bytes are not fetched before user intent.
+- Only one preview may play at a time across product cards and the detail page. Starting another pauses/resets the previous one according to a documented rule.
+- Provide play/pause, elapsed/duration, seek/progress, and a clear loading/error state. Add volume/mute only if it remains simple and accessible.
+- Controls must work with keyboard and pointer, have accessible names/states, and not rely on color or animation alone. Announce errors without repeatedly disturbing screen readers.
+- Respect reduced motion. Stop playback and release listeners/resources on navigation or unmount.
+- Use deliberately public, short, compressed preview derivatives. Never use the paid lossless deliverable as the preview and never imply that a public preview URL can be made secret.
+- Handle a missing, unsupported, expired, or failed preview gracefully without breaking the card/page.
+- Keep the client boundary small. The catalog data, layout, and product detail must remain server-rendered.
+- Do not add analytics in this step, but expose a clean internal event boundary that Step 8 can instrument without logging full URLs or personal data.
+
+Caching and revalidation
+
+Choose the caching model that matches the repository's actual Next.js 16 configuration; do not mix incompatible caching approaches.
+
+- Cache only deliberately public DTOs. Never cache secret-client results, admin data, draft previews, order data, or private paths in a public cache.
+- Product and taxonomy reads may use documented cache lifetimes and tags; search/filter combinations should avoid unbounded cache cardinality.
+- Define stable cache tags/keys for catalog lists, individual products, genres, and plugins so Step 4 publishing can invalidate precisely.
+- Export or document the invalidation contract but do not implement the Step 4 admin mutation workflow.
+- Use request memoization for the product query shared by metadata and page rendering when appropriate.
+- Document freshness expectations and verify that a published-product seed change can be observed after the intended local invalidation/revalidation path.
+
+SEO and discoverability
+
+Implement SEO from truthful live data, not placeholder marketing copy.
+
+1. Metadata
+   - Use the App Router metadata API in Server Components.
+   - Product title/description, canonical URL, Open Graph/Twitter data, and image must come only from public sanitized fields and validated site configuration.
+   - Use a deterministic local fallback when a product has no cover.
+   - Do not leak query strings, internal IDs, private media, or unsafe text into metadata.
+
+2. Canonical/indexing policy
+   - `/catalog`, `/free`, and every published product get deliberate canonical URLs.
+   - Normalize host, protocol, trailing slash, and parameter ordering consistently.
+   - Search, sort, and faceted-filter combinations must have a documented indexation policy that avoids an indexable URL explosion. Use `noindex,follow` for low-value query combinations and do not misuse robots.txt as a canonicalization mechanism.
+   - Keep self-referential canonicals on indexable canonical pages and ensure internal links use canonical URLs.
+   - Draft/archived/non-public products are 404 and absent from all discovery outputs.
+
+3. Sitemap and robots
+   - Generate `sitemap.xml` through the supported Next.js metadata convention using only canonical public routes and published rights-cleared product URLs with truthful modification dates.
+   - Never include search/filter URLs, drafts, admin routes, cart, APIs, or draft legal pages.
+   - Generate a correct robots policy and reference the sitemap. A robots disallow rule is crawl guidance, never access control.
+
+4. Structured data
+   - Render typed, sanitized JSON-LD as native `application/ld+json` script content and escape `<` or use an equivalently safe serializer.
+   - Add `BreadcrumbList` matching the visible breadcrumb.
+   - Add `Product` fields that are visible and truthful. Include `Offer`/merchant properties only when commerce is genuinely enabled and the page can actually be purchased; Step 3 must not falsely advertise availability or checkout capability.
+   - Never include fabricated `Review`, `AggregateRating`, brand, SKU, inventory, shipping, or return information.
+   - Ensure price/currency in structured data, when enabled later, comes from the same trusted fields rendered on the page.
+   - Validate representative output with automated schema tests and, where accessible, Google's Rich Results Test or Schema Markup Validator. Record what was and was not externally validated.
+
+5. Content quality
+   - One meaningful H1 per page, logical headings, descriptive link text, real alt text for meaningful covers, empty alt for decorative motifs, and no keyword stuffing.
+   - Category/filter labels should help buyers choose rather than create thin SEO doorway content.
+
+Security requirements
+
+- Maintain every Step 1 RLS/grant denial and add regression tests for new functions/views.
+- No public code path may import the secret Supabase client.
+- Parameterize database input; never interpolate search/filter/sort input into SQL.
+- Use allow-listed sort keys mapped to known SQL expressions. A URL value must never become an identifier or order clause directly.
+- Safe Markdown/plain text only; no arbitrary stored HTML and no unsanitized `dangerouslySetInnerHTML` except the separately sanitized JSON-LD serialization.
+- Validate public media kinds and expected public bucket/path format before rendering URLs.
+- Do not proxy whole preview files through a Vercel Function.
+- Avoid exposing stack traces or database details in user-visible error states.
+- Run dependency and secret scans already configured by Step 1 and inspect production client bundles for server-only leakage.
+
+Performance and accessibility
+
+- Keep catalog and product content server-rendered and meaningful without waiting for hydration.
+- Constrain client code to filter enhancement, mobile filter UI, and audio controls.
+- Paginate; never load the whole catalog or all relations into one request.
+- Fetch only card fields for lists and full fields only for one product page.
+- Use optimized responsive covers with accurate `sizes`, stable dimensions, and no layout shift.
+- Avoid eager-loading below-the-fold covers and all audio. Prioritize only genuine LCP media.
+- Preserve the Step 2 Lighthouse targets: at least 90 Performance, 95 Accessibility, 95 Best Practices, and 90 SEO for representative production-mode routes where the environment supports measurement.
+- Preserve eventual field targets of LCP <= 2.5s, INP <= 200ms, and CLS <= 0.1 at the 75th percentile.
+- Test at 320, 375, 768, 1024, 1440, and 1920 CSS pixels with no unintended overflow, clipped filter UI, unusable player, or layout collision.
+- Automated accessibility scans on catalog, filtered/empty states, product detail, mobile filters, and the audio player must have no serious or critical violations.
+
+Required tests
+
+Use the existing test stack and add focused tests at the correct layer.
+
+Database/RLS tests:
+
+- public catalog/search returns only published plus `original`/`licensed` products;
+- draft, archived, unreviewed, rejected, and private-related rows never appear;
+- exact slug lookup follows the same rules;
+- filters, full-text ranking, deterministic sorting, and pagination boundaries work;
+- malicious/special search input cannot change query structure or reveal data;
+- newly exposed functions/views respect anonymous RLS and return only their documented columns;
+- private deliverables and their paths remain unreadable.
+
+Unit/component tests:
+
+- query-parameter parse, validation, normalization, and serialization round trips;
+- bounds/defaults, multi-select values, reset behavior, and deterministic sort mapping;
+- the multi-currency safety rule;
+- row-to-view-model mapping and absence of forbidden fields;
+- safe description rendering and unsafe HTML/link cases;
+- metadata, canonical, sitemap, robots, Product JSON-LD, Breadcrumb JSON-LD, and JSON-LD escaping;
+- player state transitions, single-active-preview behavior, seek calculation, media errors, cleanup, and keyboard labels.
+
+Browser/E2E tests:
+
+- direct loading of a filtered URL renders matching server content;
+- applying/removing/clearing filters updates the URL and results correctly;
+- browser back/forward restores expected catalog state;
+- search, sorts, pagination, no-result state, and mobile filter sheet work;
+- product cards open the correct canonical detail pages;
+- non-public and missing slugs return 404 without disclosure;
+- `/free` uses live public data and exposes no download;
+- preview audio is not fetched before interaction, playback works, starting a second preview stops the first, and failure is recoverable;
+- metadata/canonical/robots directives are correct on base, filtered, product, and 404 cases;
+- sitemap contains only allowed canonical public URLs;
+- no hydration warnings, uncaught console errors, or broken public assets occur.
+
+Visual QA:
+
+- capture and inspect `/catalog` default, filtered, no-results, and mobile-filter-open states;
+- capture a representative product detail and active audio-player state;
+- inspect at least 375x812, 768x1024, and 1440x900;
+- check wrapping, focus, sticky elements, long titles, many plugin tags, missing optional fields, low/high prices, and loading skeleton stability.
+
+Documentation deliverables
+
+Create or update:
+
+1. `docs/CATALOG_AND_SEARCH.md` — public DTOs, repository boundaries, URL parameter contract, search/ranking, filters, sorting, pagination, currency rule, SQL functions/views, indexes, query-plan evidence, and empty/error behavior.
+2. `docs/MEDIA_PREVIEWS.md` — public/private boundary, supported preview types, loading policy, player behavior, encoding expectations for future uploads, accessibility, and failure handling.
+3. `docs/SEO.md` — canonical/indexing rules, metadata, Open Graph, sitemap, robots, JSON-LD truthfulness/escaping, validation procedure, and explicit prohibition on fake ratings.
+4. `docs/ARCHITECTURE.md` and `docs/SECURITY.md` — only for real Step 3 decisions or new public database surfaces.
+5. `docs/ROADMAP.md` — mark Step 3 complete only after all acceptance checks pass; preserve Steps 4–9 as pending and retain the future confirmed-payment-to-email requirement.
+6. README — only for new local seed/media, database, test, or preview commands.
+
+Required completion checks
+
+Run and report the repository's exact commands for:
+
+- formatting check;
+- lint;
+- TypeScript checking;
+- unit/component tests;
+- Supabase reset/migrations/seed;
+- pgTAP/RLS tests;
+- generated database type drift check;
+- E2E, accessibility, and SEO tests;
+- production build;
+- production-mode Lighthouse checks where supported;
+- secret/dependency scanning already configured.
+
+Also run representative query plans and inspect the production browser network/client bundles. If Docker, browsers, Lighthouse, or an external validator is unavailable, run every unaffected check and report the precise unverified command and reason. Never claim a check passed when it did not run.
+
+Acceptance criteria
+
+Step 3 is complete only when all of the following are true:
+
+1. Steps 1–2 remain green and visually intact, aside from intentional live-data replacement.
+2. `/catalog`, `/free`, and `/products/[slug]` use real Supabase public data, not production fixtures.
+3. RLS and public DTOs make it impossible for storefront responses to contain drafts, rejected products, admin data, or private deliverable paths.
+4. Search, every supported filter, deterministic sort, pagination, URL sharing, reset, and back/forward behavior work at desktop and mobile sizes.
+5. Text search is parameterized and indexed; query/index decisions are documented with actual plans.
+6. Product pages expose complete available compatibility information and render descriptions safely.
+7. Preview audio is functional, accessible, single-active, lazy, failure-tolerant, and never substitutes a paid deliverable.
+8. Canonicals, metadata, sitemap, robots, Open Graph, and truthful sanitized structured data pass automated checks; no fake ratings/reviews/offers are emitted.
+9. Draft/archived/rejected/missing products return nondisclosing 404 responses and are absent from sitemap/discovery.
+10. No customer account, admin CMS, cart behavior, Stripe, order, email, download, or deployment feature was implemented.
+11. The future rule remains documented: automatic secure package-access email immediately after webhook-confirmed payment, with a normal target under 60 seconds, durable retries, and no large email attachment.
+12. There are no serious/critical automated accessibility violations, hydration errors, uncaught console errors, unintended preview preloads, or broken assets on core routes.
+13. The production build, database security suite, and configured automated tests pass, except any precisely reported environment-only blocker.
+14. Documentation describes actual behavior and keeps Step 4+ work pending.
+
+Final response format
+
+When finished, provide:
+
+1. concise outcome;
+2. catalog/search/data architecture actually implemented;
+3. migrations/functions/indexes and their security properties;
+4. public routes, URL parameters, product-page, audio, and SEO behavior;
+5. important files changed;
+6. exact commands run and pass/fail results;
+7. query-plan, Lighthouse, accessibility, SEO-validation, and screenshot evidence;
+8. earlier-step fixes, assumptions, and blockers;
+9. explicit confirmation that admin, cart, payments, email delivery, downloads, and deployment remain unimplemented;
+10. confirmation that the future confirmed-payment-to-automatic-email requirement is preserved;
+11. the recommended next prompt title: `Step 4 — Secure admin authentication and product CMS`.
+
+Stop after Step 3. Do not proceed to Step 4.
+
+Step 3 validation references
+
+Next.js metadata and Open Graph images
+
+Next.js caching
+
+Next.js JSON-LD guidance
+
+Next.js sitemap metadata convention
+
+Next.js robots metadata convention
+
+Supabase full-text search
+
+Supabase query optimization
+
+Supabase Row Level Security
+
+Google Product structured data
+
+Google canonical URL guidance
+
+Schema.org BreadcrumbList
+
+MDN HTML audio element
+
+Stripe Checkout fulfillment — future Steps 5–6
+
+10. Exact prompt for the coding AI — Step 4
+
+Copy everything inside the following block into the coding AI after Step 3 has been completed and its completion report has been reviewed.
+
+You are implementing Step 4 of an existing production-oriented application: Secure admin authentication and product CMS.
+
+Do not begin by writing code. First inspect the entire repository, its current git status, package scripts, environment examples, migrations, generated database types, Supabase configuration, storage policies, tests, and all project documentation. Read the completion reports for Steps 1–3 and verify their claims against the actual code. Preserve intentional existing work and do not overwrite unrelated user changes. Then state a concise implementation plan and execute it completely.
+
+PROJECT CONTEXT AND LOCKED DECISIONS
+
+This is a worldwide digital store for music producers. It sells only products the owner created or is verifiably licensed to distribute: DAW project files and educational remakes, rendered stems, WAV/sample packs, and free products. The application uses Next.js App Router and TypeScript, Supabase for Postgres/Auth/Storage, and Vercel for the eventual deployment. Follow the exact versions and conventions already installed in the repository instead of replacing the stack.
+
+The following decisions are non-negotiable:
+
+1. There are no buyer/customer accounts and no customer login. Only explicitly provisioned administrators authenticate.
+2. Public self-registration, anonymous account creation, customer OAuth, and customer magic-link flows must not exist.
+3. Public covers and preview media are separate from private paid deliverables. A paid ZIP must never become a public Storage object or leak through a public database/API response.
+4. Only a product whose rights status is `original` or `licensed`, and whose required rights review is complete, may be published. Commercial stems, third-party sample packs, copyrighted recordings, or other content without documented distribution rights must not be published.
+5. Prices remain integer minor units and use the currency model established in the earlier steps. Never use floating-point money.
+6. The public catalog continues to read only the deliberately narrow public DTO/view/RPC contract created in Step 3. The CMS must not weaken that boundary.
+7. Later, Stripe-hosted guest Checkout will be used. After Stripe authoritatively confirms an immediate or delayed payment, the buyer must automatically receive a secure, expiring package-access link by email without admin intervention. The normal delivery target is under 60 seconds from confirmation. That future design must use a durable transactional outbox/job, idempotency, retries, and reconciliation; the browser success redirect must never trigger fulfillment. Do not implement payments, orders, buyer emails, grants, or customer downloads in this step, but do not make any design choice that blocks that requirement.
+8. Public product URLs and asset identity must remain stable. A paid file replacement creates a new immutable asset version; it never silently overwrites an object that a future order might reference.
+9. Security must be enforced in the database and server authorization layer, not merely by hiding UI or relying on an `/admin` pathname.
+10. Do not claim a security control, malware scan, file validation, test, or deployment succeeded unless it actually ran and produced evidence.
+
+STEP 4 GOAL
+
+Build a secure, manually provisioned admin login and a usable product-management system. It must support strong Supabase email/password authentication, TOTP MFA, AAL2 enforcement, protected server mutations, product and taxonomy management, rights review, draft preview, safe publication, direct resumable media/package uploads, immutable asset versions, audit history, and archive behavior.
+
+At the end of this step, an authorized AAL2 administrator must be able to create a draft, upload and validate its media and private package, complete a rights attestation, preview it privately, publish it, see it appear through the existing public catalog contract, update it safely, and archive/unpublish it. An anonymous user, a normal authenticated Supabase user, and an administrator with only AAL1 must be unable to perform or call any CMS mutation directly.
+
+SCOPE BOUNDARY
+
+Implement in this step:
+
+- manually provisioned Supabase admin authentication;
+- secure browser/server Supabase clients and token refresh for the installed Next.js version;
+- admin allow-list authorization in Postgres;
+- TOTP enrollment, challenge, and AAL2 enforcement;
+- secure logout and a narrowly scoped password-recovery flow if the existing project supports it;
+- protected admin layout, dashboard, product list, product editor, private preview, taxonomy management, and audit viewer;
+- database-enforced product lifecycle and rights-clearance publication gate;
+- direct resumable uploads to private staging using Supabase Storage/TUS;
+- server-side finalization, validation states, immutable asset versions, and promotion to the correct final bucket/path;
+- safe management of public covers/previews and private ZIP deliverables;
+- append-only audit history and optimistic concurrency protection;
+- deliberate public-cache invalidation after successful lifecycle changes;
+- automated database, auth, CMS, upload, security, accessibility, and regression tests;
+- operational and security documentation.
+
+Explicitly do not implement:
+
+- a customer account, customer sign-in, profile, library, or account dashboard;
+- cart persistence or checkout behavior;
+- Stripe Checkout, webhooks, payments, taxes, orders, refunds, or disputes;
+- fulfillment outbox jobs, transactional buyer emails, download grants, or customer download routes;
+- reviews, ratings, wishlists, coupons, analytics, recommendations, or marketing automation;
+- final production deployment.
+
+If the repository is not genuinely ready for Step 4, fix only small regressions that are required to preserve Steps 1–3. Stop and report a precise blocker if proceeding would require inventing missing architecture, destructively rebuilding earlier work, or weakening an established security boundary.
+
+PRE-FLIGHT GATE
+
+Before implementation:
+
+1. Record the current branch and git status. Do not reset, discard, or reformat unrelated changes.
+2. Read `README.md`, all files under `docs/`, the environment example, `package.json`, Next.js/Supabase configuration, every migration and seed, generated database types, RLS and Storage policy tests, the public repository/DTO layer, cache tags, and the existing route tree.
+3. Run the repository's existing formatting, lint, typecheck, unit/component, database reset, migration, generated-type drift, pgTAP/RLS, E2E, accessibility, and production-build checks. If a command is unavailable, record the exact reason instead of silently skipping it.
+4. Confirm the public Step 3 data contract excludes private asset keys, rights evidence, admin identities, draft content, internal notes, upload states, and audit data.
+5. Confirm the Step 3 cache-tag/path invalidation contract and reuse it. Do not create a second competing cache system.
+6. Confirm Supabase Auth and Storage are being used, not a parallel home-grown session system or another database.
+7. Confirm all secrets are absent from committed files and public client bundles.
+8. Write down any schema or documentation difference from this prompt and choose the least-destructive adaptation. Prefer extending an existing equivalent table over creating a duplicate.
+
+ARCHITECTURE DECISIONS
+
+Use this trust boundary:
+
+- Supabase Auth proves identity.
+- A database-backed active-admin allow-list grants the administrator role.
+- A verified AAL2 claim proves that the current session completed MFA.
+- The server data-access layer checks identity, active-admin status, and AAL2 before rendering protected data or accepting a mutation.
+- Postgres RLS and Storage policies repeat the active-admin and AAL2 checks so bypassing the UI or invoking an action directly still fails.
+- Database constraints/triggers or a narrowly scoped transactional RPC enforce state transitions, rights readiness, and publication invariants.
+- The public storefront continues to use only public catalog projections.
+- All uploads initially land in a private staging bucket/path. Only validated assets are promoted or attached to final public/private locations.
+- Audit events are written by trusted database functions/triggers as part of the same transaction as the change where possible.
+
+Do not create an application-level role stored only in cookies, local storage, `user_metadata`, or a client-side state store. Do not trust an email-domain check as authorization. Key the admin allow-list to the immutable Supabase Auth user UUID. Treat display email as descriptive data only.
+
+DATABASE AND MIGRATIONS
+
+Inspect the existing model and add only the missing pieces. Names may follow the repository's established conventions, but the design must provide equivalents of:
+
+- an admin allow-list containing Auth user ID, active/disabled state, display metadata, creation/disable timestamps, and who performed administrative changes;
+- private rights-review/attestation fields or a related table containing rights status, source/type, internal evidence reference or notes, reviewer Auth UID, review timestamp, and optional license expiry/restrictions;
+- product optimistic-concurrency data, preferably a monotonically increasing version plus `updated_at`;
+- upload intents with a random ID, requested asset type, product ID, exact generated staging path, expected size/type, creator UID, expiration, and one-way lifecycle;
+- product asset records with media role, immutable version, bucket/key, original filename as metadata only, declared and detected type, byte size, dimensions/duration where relevant, client checksum hint, server-verified checksum and verification time, validation state, active/superseded state, and timestamps;
+- an append-only audit-event table containing actor UID, action, entity type/ID, timestamp, safe changed-field summary, request/correlation identifier when available, and structured non-secret context;
+- any safe slug redirect mapping only if the existing product design already permits published slugs to change.
+
+Do not duplicate equivalent Step 1 tables. Migrations must be forward-only, deterministic, idempotent where the repository convention requires it, and safe for existing data. Do not weaken existing constraints or grant broad access to make tests pass. Regenerate checked-in database types with the repository's established command.
+
+Create a reusable database predicate or narrowly scoped helper for `is_active_admin(auth.uid())`, written safely and covered by tests. If it is `security definer`, use an empty or fixed safe `search_path`, schema-qualify every reference, make it non-generic, revoke default/public execution, and grant only the minimum role that needs it. It must not accept an arbitrary user ID that callers can use to inspect another user.
+
+RLS AND GRANT MATRIX
+
+Enable and test RLS on every new table. The minimum matrix is:
+
+- anonymous: no access to admin, rights, upload-intent, private asset, or audit rows;
+- authenticated non-admin: no access;
+- active admin at AAL1: only the smallest self-only allow-list/auth state required to route safely into MFA enrollment or challenge; no CMS reads or writes;
+- active admin at AAL2: only the intended CMS operations;
+- disabled admin at any AAL: no CMS access;
+- public catalog: still limited to the published public projection from Steps 1–3.
+
+For admin CMS policies, require both active-admin membership and `(select auth.jwt()->>'aal') = 'aal2'`, or the equivalent verified claim access supported by the installed Supabase version. Prefer restrictive policies when combining the AAL2 condition with other policies. Do not make a permissive authenticated-user policy that accidentally cancels the MFA restriction.
+
+The audit table must be append-only from the application perspective. Administrators may read authorized audit events, but ordinary CMS clients must not update, delete, or directly insert arbitrary events. A trusted trigger/function writes them. Protect the audit mechanism from recursive writes and never place password values, TOTP secrets, access/refresh tokens, API keys, complete signed URLs, or raw sensitive rights documents in an audit payload.
+
+Product state changes must be enforced in the database, not only disabled in the interface. Implement a documented transition model for draft, published, unpublished if distinct, and archived states. Invalid transitions fail atomically. Prefer archive/soft-delete for product records and assets.
+
+AUTHENTICATION IMPLEMENTATION
+
+Use the current official Supabase SSR pattern compatible with the installed Next.js version:
+
+1. Maintain distinct browser and server client factories using cookie storage.
+2. Use the project's publishable/anon client key only where appropriate. Never expose the Supabase secret/service-role key.
+3. Use `proxy.ts` for Next.js 16+ or `middleware.ts` for the installed older version to refresh expired tokens and propagate response cookies correctly.
+4. On the server, use a verified-claims operation such as current Supabase `auth.getClaims()` for authorization. Never authorize from `getSession()` or from an unverified cookie payload.
+5. Follow the official cookie-refresh ordering exactly and keep the matcher narrow enough to avoid unnecessary static-asset work without leaving protected routes unrefreshed.
+6. Never cache authenticated/admin HTML or responses publicly. Verify response headers and framework behavior; authenticated content must be private/no-store and must not be placed in a shared Full Route Cache or data cache.
+
+Create one central server-only authorization/data-access guard, such as `requireAdmin({ aal2: true })`, that:
+
+- verifies the token and extracts the current subject;
+- checks the subject is an active allow-listed administrator;
+- checks current AAL is `aal2` for CMS access;
+- returns only a minimal typed admin principal;
+- redirects only during page navigation and returns a typed authorization failure for actions/handlers;
+- never reveals whether an arbitrary email is an administrator.
+
+The proxy/middleware is an early routing convenience, not the sole authorization barrier. Every protected page loader, Server Action, Route Handler, upload-intent/finalization endpoint, signed-URL operation, and database mutation must call the central guard or an equivalent server-side check. Treat Server Actions and Route Handlers as public endpoints that hostile clients can invoke directly.
+
+Use email and password for the manually provisioned admin. Disable public signup in local Supabase configuration and include the exact hosted Supabase Dashboard settings in the production checklist. Disable unused social/OAuth/phone/anonymous providers. Do not add a registration page or a secret public `create-admin` endpoint.
+
+Provision the first administrator out of band through the Supabase Dashboard or a clearly documented, auditable, server-only/local operator script that uses a secret credential. If a script is added, it must refuse browser execution, accept secrets through environment/stdin rather than arguments or source files, avoid logging the password/token, be safe to rerun, and never be deployed as a public route. Admin account creation must use the Supabase admin API only on a trusted server/operator machine.
+
+Use a strong production password policy. Document a sensible minimum length and the hosted leaked-password-protection option when supported by the Supabase plan. Use Supabase's actual authentication endpoint rate limits; do not present a per-process JavaScript map as durable brute-force protection. If an additional limiter is implemented, it must work across Vercel instances, store only HMAC/pseudonymous identifiers where practical, expire records, and avoid logging raw credentials. Do not add a new paid vendor without approval. Produce generic authentication errors so the UI does not enumerate registered/admin emails.
+
+Validate and allow-list any `next`/return path. Accept only same-origin known admin paths; never redirect to an arbitrary absolute or protocol-relative URL. Make logout a POST/Server Action mutation, clear the session safely, and redirect to the login page. Handle expired/revoked sessions without loops.
+
+If password recovery is included, expose it only as a generic email form using Supabase's recovery flow. Always show the same response, use an exact allow-listed callback URL, reject arbitrary redirects, and require the recovered administrator to complete MFA before CMS access. Document SMTP/deliverability as a later production configuration concern. Do not implement customer recovery.
+
+TOTP MFA AND AAL2
+
+Implement Supabase TOTP MFA, not an application-generated Boolean flag.
+
+Required state flow:
+
+- after correct password authentication, first verify the user is an active allow-listed admin;
+- if there is no verified TOTP factor, send the AAL1 session only to `/admin/mfa/enroll`;
+- if a verified factor exists but the session is AAL1, send it only to `/admin/mfa/challenge`;
+- after a successful challenge/verify upgrades the session to AAL2, allow the CMS;
+- if the admin is inactive or not allow-listed, sign out and show a generic access-denied result;
+- if AAL2 expires/downgrades, send the user back through challenge rather than allowing the pending operation.
+
+During enrollment, display the QR code and a manual setup key once, with clear instructions. Generate/render the QR locally from the enrollment URI; do not send the TOTP secret to analytics, logs, error reporting, image services, or another third party. Never store the factor secret in the application database. After verification, remove it from component state as far as practical. Prevent factor management at AAL1. Do not provide casual removal of the last verified factor in this step; document an out-of-band, audited break-glass recovery procedure that disables/reprovisions the account rather than bypassing AAL2.
+
+Enforce AAL2 three times: server guard, database RLS/RPC, and Storage policies. A hidden button or middleware redirect is not enforcement.
+
+ADMIN ROUTES AND INFORMATION ARCHITECTURE
+
+Use the existing App Router and design system. Exact path grouping may follow repository conventions, but implement equivalents of:
+
+- `/admin/login`;
+- `/admin/mfa/enroll`;
+- `/admin/mfa/challenge`;
+- `/admin/password-recovery` and a safe callback if recovery is implemented;
+- `/admin` dashboard;
+- `/admin/products` searchable/filterable product table;
+- `/admin/products/new`;
+- `/admin/products/[id]` editor;
+- `/admin/products/[id]/preview` protected draft preview;
+- `/admin/taxonomies` for genres/plugins or separate focused routes;
+- `/admin/audit` read-only audit viewer;
+- an optional `/admin/security` page limited to current session/factor status, without secret exposure.
+
+Do not link the admin area from public navigation. Exclude it from sitemap and public search/discovery. Add `noindex, nofollow` metadata and appropriate private/no-store behavior, but do not treat those as access controls. An unauthorized request must receive a redirect or nondisclosing 401/403 as appropriate and must never stream protected data before authorization completes.
+
+The dashboard should be operationally useful but small: draft/published/archived counts, items needing rights or asset validation, and recent safe audit events. Do not add business analytics in this step.
+
+PRODUCT LIST AND EDITOR
+
+The product table must use server-side pagination and support useful search/filtering by title/slug, product type, lifecycle state, rights readiness, asset readiness, genre, and updated date. Keep filters in the URL where practical. Do not load the whole catalog into the browser.
+
+The editor must cover all fields established in Steps 1–3, including:
+
+- title, slug, short summary, and safely rendered long description;
+- product type and free/paid state;
+- integer minor-unit price and supported currency;
+- genres, tags, and plugin/software relationships;
+- DAW, DAW version, plugin requirements, technical compatibility, file size, and included contents where relevant;
+- public cover and preview media;
+- one or more immutable private deliverable versions for paid/downloadable products;
+- license/customer-facing usage summary already modeled by the project;
+- private rights status, evidence/notes, reviewer attestation, restrictions, and expiry where applicable;
+- SEO title/description fields only if already supported by the public SEO contract;
+- lifecycle and publish-readiness status.
+
+Use one canonical schema for client hints and authoritative server validation. Client validation improves UX but never substitutes for server/database validation. Trim and normalize inputs deliberately. Place strict length/count/range limits on every field and relationship collection. Treat IDs as opaque and verify referenced rows. Render descriptions with the existing safe Markdown/content pipeline; raw HTML and executable URLs must remain disabled. Never accept client-supplied `created_by`, `updated_by`, reviewer UID, lifecycle readiness, checksum verification, or audit actor values.
+
+Use explicit Save Draft and lifecycle actions rather than fragile autosave. Show dirty state, submitting/success/error state, field errors, and unsaved-navigation warning. Preserve user input after a recoverable validation error.
+
+Add optimistic concurrency. Send the last-read row version or timestamp with mutations, compare it atomically, and return a clear conflict when another edit won. Never silently overwrite a newer version. The conflict UI should let the administrator reload or consciously reconcile; do not auto-merge legal/rights or asset fields.
+
+Slugs must remain unique and normalized by one shared rule. The safest Step 4 behavior is to lock the slug once a product is published. If the existing architecture explicitly supports post-publication slug changes, perform the change transactionally and create a tested redirect record; never silently break an indexed URL.
+
+DRAFT PREVIEW
+
+The draft preview route must render the real product-page presentation using private admin data while remaining protected by active-admin+AAL2 checks. It must be no-store and noindex. Do not create a publicly shareable preview token in this step. Do not fetch a draft through the public catalog repository or relax the public DTO to make preview convenient.
+
+PUBLICATION AND RIGHTS GATE
+
+Implement publication through one atomic, narrowly scoped database function/RPC or an equally strong transaction boundary. Do not execute a sequence of loosely related client writes and then set `status = published`.
+
+The publish operation must re-read the current record and reject publication unless all applicable conditions are true:
+
+- caller is the current active admin and JWT AAL is `aal2`;
+- optimistic-concurrency version still matches;
+- lifecycle transition is allowed;
+- rights status is exactly `original` or `licensed`;
+- an original product has an explicit current administrator attestation and review timestamp;
+- a licensed product has its source/evidence reference, scope/restrictions, review, and any applicable expiry recorded privately;
+- no license required for publication is expired;
+- title, slug, summaries/descriptions, classification, price/currency, customer-facing license information, and product-type-specific compatibility fields are valid;
+- required public cover/media assets are active and fully validated;
+- every referenced asset belongs to this product and has the correct role;
+- a paid/downloadable product has at least one active, immutable, fully validated private ZIP deliverable version;
+- no required upload remains pending, quarantined, failed, or deletion-pending;
+- no public projection would reveal private rights notes, staging paths, private bucket keys, admin identities, or internal status fields.
+
+The operation updates lifecycle/version data and writes an audit event in the same transaction. Any failed requirement returns structured, non-secret readiness errors and leaves the product unchanged. Provide a server-rendered publication-readiness checklist in the editor, but let the database remain authoritative.
+
+Unpublishing/archiving must also be transactional and audited. It must invalidate the public data immediately after commit. Never hard-delete a published product or an asset version that a future order could reference. For this step, prefer archive everywhere. If hard deletion of an empty never-published draft is supported, require a typed confirmation and database proof that it has no assets, audit/legal dependencies, or other references.
+
+TAXONOMY MANAGEMENT
+
+Allow AAL2 administrators to create/edit genres and plugin/software taxonomy entries using the existing schema. Enforce normalized unique names/slugs and validate display ordering if present. If an entry is referenced, archive/disable it instead of deleting it. Taxonomy mutations must be authorized, audited, concurrency-safe, and followed by the same deliberate public-cache invalidation used by catalog reads.
+
+UPLOAD TRUST BOUNDARY
+
+Do not send large files through a Vercel Server Action or Route Handler request body. Use a two-phase direct-upload protocol:
+
+1. An AAL2-protected server action creates an expiring upload intent after validating the product, requested role, declared filename/extension/type, and expected size. It generates the complete random, immutable, versioned staging object path; the client never chooses an arbitrary path.
+2. The authenticated browser uploads directly to a private Supabase staging bucket using the official resumable TUS client, current access token, the currently required 6 MB chunk size unless installed official documentation says otherwise, retry policy, progress, cancellation, and resume metadata.
+3. An AAL2-protected finalization call accepts only the intent ID, not an arbitrary bucket/key. It atomically claims the unexpired intent, confirms the exact object exists at the intended staging path, checks server-reported metadata/size, and places it into an uploaded/quarantined validation state. Repeated finalization must be idempotent.
+4. A trusted validation worker/process reads the staging object with bounded resources, derives actual file facts, computes the server-side checksum, performs role-specific inspection, and only then marks it ready and promotes/copies it to the generated final public or private location.
+5. Activation of a new version is atomic. The prior version becomes superseded only after the new version is ready. Never use Storage `upsert` for product assets.
+
+If the repository already has a sound equivalent pipeline, extend it rather than duplicating it. The upload intent must expire, be one-use/idempotent, be bound to the initiating administrator and product/role, and never permit path traversal or cross-product attachment.
+
+All staging objects are private. Unvalidated covers/previews must not be instantly reachable from a public bucket. Only sanitized/validated public cover and preview derivatives go to the public-media location. Paid packages remain in a private deliverables bucket permanently. Anonymous users must not be able to list, read, insert, update, or delete staging/private-deliverable objects. Public bucket policies must allow only the intentional read surface and no anonymous writes.
+
+Storage write policies must require the authenticated current UID to be an active administrator with AAL2 and must restrict exact buckets/path prefixes. Finalization must repeat these checks server-side. A Supabase secret/service key may be used only in a narrowly scoped trusted validator or operator context when genuinely necessary; it must never reach the browser and it must not become the routine way CMS mutations bypass RLS.
+
+FILE VALIDATION
+
+Treat filename, extension, browser MIME header, upload metadata, and client checksum as untrusted claims.
+
+For every upload:
+
+- normalize Unicode and case before extension checks;
+- reject path separators, control/null characters, empty names, trailing-dot/space tricks, double-extension bypasses, and unsupported extensions;
+- preserve the original filename only as length-limited display metadata;
+- generate every stored object key independently with random/opaque identifiers and immutable version components;
+- compare a strict role-specific extension allow-list with detected magic bytes/container type;
+- apply explicit byte-size limits before intent creation and confirm actual stored size after upload;
+- compute a streaming SHA-256 or stronger digest in the trusted validator without buffering the entire large file;
+- label a client-computed digest only as a client hint until the trusted process independently verifies it;
+- never extract an archive into a served directory;
+- block executables, scripts, installers, macros, server-executable formats, and ambiguous polyglots.
+
+Role-specific policy:
+
+1. Covers: accept only the deliberately supported safe image formats. Enforce modest file-size, dimensions, and total-pixel limits. Decode fully and re-encode/strip metadata in the trusted processing path when the chosen runtime supports it. Reject malformed/decompression-bomb images. Do not support SVG unless there is an explicit proven sanitizer and a business need; otherwise omit it.
+2. Public audio previews: accept only the established browser-compatible compressed preview format(s), with strict duration/size/codec/container limits. Validate the actual container. A preview is never the lossless/full deliverable.
+3. Public video previews, if the existing product schema supports them: restrict to specifically supported MP4/WebM container/codec combinations with duration, resolution, and size limits. Do not add video merely for Step 4.
+4. Paid package: accept a ZIP only. Reject encrypted/password-protected archives, absolute paths, `..` traversal, symlinks/hardlinks, device paths, suspicious nested archives, excessive entry counts, extreme per-entry or total uncompressed size, and dangerous compression ratios. Inspect the central directory with bounded parsing and reject executables/scripts/installers/macros inside the archive. Store derived entry-count/uncompressed-size facts. Do not trust a client-side ZIP check as the authoritative result.
+
+Antivirus/malware scanning must be represented honestly. If a real trusted malware scanner is available in the repository/environment, integrate it behind a small validator interface and record engine/signature version and scan time without leaking file contents. If no real scanner is available, keep new deliverables quarantined or require a documented, audited manual scan/approval gate, label the missing automated scanner as a production-release blocker for the later hardening step, and never set `malware_scan = passed` by assumption. Platform runtime limits are not permission to skip validation: an object the trusted worker cannot fully validate remains unpublishable.
+
+Use a documented asset state machine such as `pending -> uploaded -> quarantined -> ready -> active -> superseded`, with `failed` and `deletion_pending` paths as needed. Enforce transitions. Database rows and Storage objects are not one atomic system, so every cross-system operation and cleanup must be idempotent and retry-safe. Add bounded cleanup for expired intents and orphan staging objects, with a dry-run or safe operator procedure if scheduling is deferred.
+
+For administrator verification of a private ready deliverable, create only a short-lived signed URL after an AAL2 server check. Keep the TTL short, never persist/log the signed URL, set download-oriented content disposition where supported, and do not confuse this admin preview with the future buyer download-grant system.
+
+AUDITING
+
+Audit at least:
+
+- product create/update/publish/unpublish/archive and any allowed draft deletion;
+- rights attestation/review changes;
+- upload intent creation, validation outcome, asset activation/supersession, and deletion request;
+- taxonomy create/update/archive;
+- material security operations such as admin disable/re-enable or factor recovery if they exist in this step.
+
+Record a compact changed-field list or safe before/after subset, not an indiscriminate dump. Redact private evidence contents when a reference is enough. Database triggers/functions must source the actor from verified `auth.uid()` rather than a form field. Display audit times consistently in UTC plus a clear local formatting strategy.
+
+CACHE INVALIDATION AND STOREFRONT CONSISTENCY
+
+Only after the database transaction commits successfully, invalidate the exact Step 3 product, catalog, free-products, taxonomy, sitemap, and metadata tags/paths affected by a publish, published edit, unpublish, archive, slug change, or taxonomy change. Centralize this mapping and test it. Draft-only edits must not create unnecessary public invalidation.
+
+On invalidation failure, do not roll back a committed database change by pretending it did not happen. Log a safe operational error, surface a retryable warning to the administrator, provide an idempotent retry/reconciliation operation, and document the bounded cache-freshness behavior. Verify that unpublished/archived content does not remain publicly accessible through an untagged cache path. Never cache admin data under a public tag.
+
+ADMIN UX AND ACCESSIBILITY
+
+Use the existing visual language rather than importing a second component library. The CMS may be denser than the storefront but must remain coherent, responsive from 320 px upward, keyboard operable, and usable without a mouse.
+
+Group the editor into clear sections: basics, pricing/classification, compatibility, media previews, private deliverables, rights/license, SEO if applicable, and publication readiness. Show status badges in text plus color. Give upload rows actual progress, current state, retry/cancel controls where valid, and clear validation failure reasons. Do not show a fake 100% before server validation finishes.
+
+Every form control needs a programmatic label, help/error association, sensible autocomplete, and visible focus. On failed submission, move focus to a useful error summary without erasing entered values. Announce upload and save state changes to assistive technology without excessive chatter. Confirmation dialogs must trap/restore focus correctly and name the exact destructive/lifecycle action. Respect reduced motion. Meet WCAG 2.2 AA contrast and interaction expectations using the project's existing accessibility setup.
+
+Do not expose an admin-login link, administrator identity, internal product ID, rights notes, upload diagnostics, audit data, or Storage key on a public page or metadata payload.
+
+SERVER ACTION AND ROUTE-HANDLER RULES
+
+For every mutation:
+
+- use POST/Server Action semantics, never GET;
+- perform authorization and AAL2 checks inside the action/handler;
+- validate the complete input on the server with the project's schema library;
+- verify entity ownership/relationship and current row version;
+- call a constrained RLS-protected query or narrow RPC;
+- return typed, nondisclosing errors;
+- write or cause an audit event;
+- invalidate only after a committed success;
+- avoid logging request bodies containing credentials, TOTP values, rights evidence, tokens, or signed URLs.
+
+Use Next.js's current Server Action origin protection correctly. For any bespoke cookie-authenticated Route Handler, verify same-origin/allowed Origin and use an explicit CSRF defense where the framework does not already provide one. Configure allowed origins narrowly for the real deployment domains; do not use a wildcard. Keep server-only modules marked/imported so they cannot enter client bundles.
+
+SECRETS AND CONFIGURATION
+
+Update the environment example with names and explanations only, never real values. Validate server environment variables at startup or first server use and client variables separately. Preserve the repository's selected Supabase publishable/anon-key convention. Any secret/service key, upload validation secret, HMAC key, or operator credential is server-only and must fail closed if absent.
+
+Add production checklists for:
+
+- exact Site URL and redirect allow-list for local, preview, and production origins;
+- disabled public signup and unused providers;
+- strong password and leaked-password settings supported by the plan;
+- MFA settings and Auth rate limits;
+- secure custom SMTP before relying on password recovery in production;
+- separate local/preview/production Supabase projects or an equally safe environment strategy;
+- Vercel environment-variable scope and preview-domain handling;
+- Storage bucket privacy, MIME/size configuration, and CORS limited to required origins/methods;
+- scheduled cleanup/validation worker operation where applicable.
+
+Do not put local admin credentials or a TOTP seed in a shared `.env.example`, seed file, screenshot, fixture shipped to production, or completion report. Automated auth tests may use an isolated local-only fixture injected at runtime and excluded from client bundles/logs.
+
+TESTING REQUIREMENTS
+
+Add deterministic tests at the lowest useful layer and at least one end-to-end path. Do not replace security tests with snapshots.
+
+Database/pgTAP tests must prove:
+
+1. anonymous, non-admin authenticated, disabled-admin, active-admin AAL1, and active-admin AAL2 access for every new table/RPC;
+2. AAL1 cannot create/update/publish/archive products, manage taxonomies, read audit data, create upload intents, finalize uploads, or write Storage objects;
+3. public DTOs still expose only published safe fields;
+4. every invalid product transition is rejected;
+5. publication fails for missing/invalid/expired rights review, missing required data, incorrect price, pending/quarantined assets, missing private ZIP, or cross-product asset references;
+6. publication succeeds atomically only for a fully ready product and creates the correct audit event;
+7. audit rows cannot be directly forged, changed, or deleted by CMS clients;
+8. optimistic concurrency rejects stale writes;
+9. taxonomy delete/archive rules preserve references;
+10. private/staging Storage reads/listing/writes fail for every unauthorized class while intended public media reads remain possible.
+
+Auth/integration/E2E tests must cover:
+
+- no signup/customer-login UI or callable application signup endpoint;
+- generic failure for wrong/unknown login;
+- non-allow-listed authenticated user denial;
+- active admin AAL1 routes to enrollment or challenge and cannot invoke a captured CMS action;
+- TOTP enrollment/challenge produces AAL2 and grants access;
+- logout and expired/revoked session behavior;
+- safe allow-listed return paths and rejection of open redirects;
+- password recovery response non-enumeration if recovery exists;
+- admin pages absent from sitemap and marked noindex/no-store;
+- direct requests to protected pages, actions, handlers, and signed-URL endpoints without authorization fail without data leakage.
+
+CMS E2E tests must cover:
+
+- create/edit/save a draft with server validation;
+- stale-edit conflict behavior;
+- protected draft preview that is invisible anonymously;
+- rights readiness and failed publication reasons;
+- successful publish updates the Step 3 storefront and metadata after cache invalidation;
+- published update invalidates the correct product/listing paths;
+- unpublish/archive removes public visibility and sitemap discovery;
+- referenced taxonomy cannot be destructively deleted;
+- audit viewer shows the safe corresponding event.
+
+Upload tests must cover:
+
+- invalid intent product/role, expired intent, replayed finalization, wrong bucket/path, wrong object size, unauthorized cross-product attachment, and missing object;
+- anonymous, non-admin, disabled-admin, and AAL1 Storage writes are denied;
+- oversize files, null bytes, traversal, uppercase/double extension tricks, MIME/signature mismatch, malformed image/media, and prohibited types are rejected;
+- ZIP traversal, absolute paths, symlinks, encrypted archives, excessive entries/uncompressed size/compression ratio, nested danger, and embedded executable/script types remain quarantined/rejected;
+- the server checksum is not copied from the client hint;
+- new versions never overwrite old object keys and activation supersedes only after readiness;
+- public preview objects are readable only after promotion, while paid ZIPs remain private and unlistable;
+- failed validation and abandoned upload cleanup are safe and idempotent;
+- progress, cancellation, retry, and final validation states are accurately represented in UI tests.
+
+Also run:
+
+- format, lint, strict TypeScript, unit/component, integration, production build, and generated-type drift checks;
+- the full Step 1–3 regression suite, including RLS, public catalog/search/filter/SEO/audio behavior;
+- automated accessibility checks plus keyboard/focus/manual viewport review at 320, 768, 1024, and a wide desktop size;
+- a search of built client output and logs for server secrets, local TOTP fixture, private bucket paths, signed URLs, and private rights fields;
+- dependency/secret scanning already configured in the repository.
+
+Where TUS, email recovery, a malware engine, media parser, Docker, browser, or hosted Supabase configuration cannot run locally, run all unaffected checks and give the exact unverified control, command/setting, reason, and release consequence. A mocked pass is not production evidence.
+
+DOCUMENTATION DELIVERABLES
+
+Create or update:
+
+1. `docs/ADMIN_AUTH.md` — architecture, trust boundaries, route matrix, SSR/cookie pattern, central guard, provisioning, login/MFA/recovery/logout flows, AAL1/AAL2 behavior, rate limits, hosted settings, session failure behavior, and break-glass runbook.
+2. `docs/ADMIN_CMS.md` — information architecture, editor fields, validation, concurrency, lifecycle state machine, transactional publication/readiness gate, archive policy, taxonomies, audit behavior, and cache invalidation/reconciliation.
+3. `docs/UPLOAD_SECURITY.md` — buckets and path rules, intent/finalize protocol, TUS configuration, exact allow-lists/limits, validation and checksum trust levels, ZIP defenses, asset state/version model, quarantine/malware posture, signed admin inspection, cleanup, and platform limits.
+4. `docs/OPERATIONS.md` or an existing equivalent — admin provisioning/disable/recovery, hosted Supabase settings, cleanup/validator operation, cache retry, and incident steps without any live secret.
+5. `docs/ARCHITECTURE.md` — only the real final Step 4 components and trust boundaries.
+6. `docs/SECURITY.md` — updated threat model, authorization matrix, CSRF/session/cache/file-upload controls, known residual risks, and honest release blockers.
+7. `docs/ROADMAP.md` — mark Step 4 complete only if every acceptance condition passes; keep Steps 5–9 pending and preserve the automatic post-confirmed-payment email invariant.
+8. README and `.env.example` — only the actual setup, local admin/test provisioning, worker, and verification commands/names needed.
+
+Document actual implementation rather than desired behavior. Keep all earlier architectural decisions and payment-delivery invariants intact.
+
+REQUIRED COMPLETION CHECKS
+
+Run and report the repository's exact commands for:
+
+- formatting check;
+- lint;
+- TypeScript checking;
+- unit/component/integration tests;
+- Supabase reset, all migrations, and seed;
+- pgTAP/RLS/Storage-policy tests across the full role/AAL matrix;
+- generated database type drift check;
+- auth/MFA/admin CMS/upload E2E tests;
+- earlier storefront E2E, accessibility, and SEO regression tests;
+- production build;
+- secret/dependency scans already configured.
+
+Inspect response headers and rendered/network output to confirm admin no-store/noindex behavior and absence of private fields. Inspect the production client bundles for server-only secrets/modules. Capture focused screenshots for login, MFA enrollment/challenge with all secrets redacted, product list/editor, upload/validation state, readiness gate, draft preview, conflict state, and mobile/desktop layouts. Never place a usable QR/TOTP secret, password, token, signed private URL, or private evidence in a screenshot or report.
+
+ACCEPTANCE CRITERIA
+
+Step 4 is complete only when all of the following are true:
+
+1. Steps 1–3 remain green and public catalog/SEO/media behavior is intact.
+2. Public signup and customer auth do not exist; administrators are manually provisioned and database allow-listed by Auth UID.
+3. Supabase SSR cookies are refreshed correctly, claims are verified server-side, and no admin response is publicly cached.
+4. An active administrator must reach real TOTP AAL2 before any CMS read/mutation; server guards, RLS/RPCs, and Storage policies all enforce it.
+5. Anonymous, non-admin, disabled-admin, and AAL1 sessions fail direct invocation tests without protected-data leakage.
+6. Admin provisioning, login, MFA enrollment/challenge, logout, expiry, and recovery if implemented are documented and tested without secrets in source/logs/client bundles.
+7. The product list/editor supports safe drafts, server validation, protected preview, optimistic concurrency, and the existing complete product model.
+8. Only `original` or properly reviewed `licensed` products can pass the transactional publication gate; missing/expired rights or unready assets make publication impossible at the database level.
+9. Paid/downloadable products cannot publish without an active validated immutable private ZIP; public covers/previews and private deliverables remain strictly separated.
+10. Large uploads go directly to private staging with resumable TUS, generated paths, expiring intents, idempotent finalization, visible progress, and no Vercel-body proxy.
+11. Actual type/size/container/archive validation is trusted-server-side; checksum provenance is honest; dangerous ZIPs/files are rejected; unavailable malware scanning remains quarantined/manual and is explicitly tracked rather than faked.
+12. Asset replacement creates a new immutable version and never overwrites the old key; orphan/failed cleanup is safe and retryable.
+13. Product/taxonomy/lifecycle/rights/asset actions generate immutable safe audit events.
+14. Publish/update/unpublish/archive changes invalidate every affected Step 3 public cache surface, with an idempotent recovery path for invalidation failure.
+15. The CMS is responsive, keyboard usable, and free of serious/critical automated accessibility violations on core workflows.
+16. No server secret, TOTP secret, password, private path, rights evidence, signed URL, draft data, or admin identity appears in a public response, client bundle, sitemap, metadata object, or log fixture.
+17. All database and application security tests, production build, and configured regression checks pass, except for any precisely documented environment-only blocker that does not get misrepresented as a pass.
+18. No cart, Stripe, order, buyer email, download grant, customer account, reviews, analytics, or deployment feature was implemented.
+19. The future invariant remains explicit: after authoritative Stripe payment confirmation, the system will automatically email a secure expiring package-access link, normally within 60 seconds, using durable idempotent fulfillment—not the success page and not a large attachment.
+20. Documentation matches the code, gives safe operator procedures, and leaves Step 5+ pending.
+
+FINAL RESPONSE FORMAT
+
+When finished, provide:
+
+1. concise outcome and whether Step 4 is truly complete;
+2. authentication/MFA/AAL2 architecture actually implemented;
+3. authorization, RLS, Storage-policy, and route access matrix;
+4. migrations, functions/triggers, asset state machine, and publication gate;
+5. admin routes and CMS workflows;
+6. direct-upload, validation, ZIP, checksum, versioning, quarantine, and cleanup behavior;
+7. audit and cache-invalidation behavior;
+8. important files changed;
+9. exact commands run with pass/fail/not-run results;
+10. screenshots and security/accessibility evidence, with secrets redacted;
+11. earlier-step fixes, assumptions, known residual risks, and precise blockers;
+12. explicit confirmation that customer accounts, cart, Stripe, payments, orders, buyer email delivery, download grants, reviews, analytics, and deployment remain unimplemented;
+13. confirmation that the automatic secure email after confirmed payment, normally within 60 seconds, remains preserved for later steps;
+14. the recommended next prompt title: `Step 5 — Durable guest cart and Stripe-hosted checkout`.
+
+Stop after Step 4. Do not proceed to Step 5.
+
+Step 4 validation references
+
+Supabase SSR client creation for Next.js
+
+Supabase server-side authentication
+
+Supabase MFA overview
+
+Supabase TOTP MFA
+
+Supabase Auth admin user creation
+
+Supabase password security
+
+Supabase Auth rate limits
+
+Supabase redirect URLs
+
+Supabase Storage access control
+
+Supabase resumable uploads
+
+Supabase Storage upload limits
+
+Next.js authentication guide
+
+Next.js data mutations
+
+Next.js revalidateTag
+
+Next.js updateTag
+
+OWASP Authentication Cheat Sheet
+
+OWASP File Upload Cheat Sheet
+
+11. Exact prompt for the coding AI — Step 5
+
+Copy everything inside the following block into the coding AI only after Step 4 has been completed and its completion report and repository state have been reviewed.
+
+You are implementing Step 5 of an existing production-oriented application: Durable guest cart and Stripe-hosted checkout.
+
+Do not begin by writing code. First inspect the entire repository, current git status, installed versions, package scripts, Supabase migrations and generated types, RLS and Storage policies, environment validation, route tree, public catalog repository, admin authorization layer, test suites, and every file under `docs/`. Read the actual completion reports for Steps 1–4 and verify their claims against the code. Preserve intentional existing work and never discard unrelated changes. Then state a concise implementation plan and execute it completely.
+
+PROJECT CONTEXT AND LOCKED DECISIONS
+
+This is a worldwide digital-product store for music producers. It sells only original or verifiably licensed DAW project files, educational remakes, rendered stems, WAV/sample packs, and optional free products. It uses the existing Next.js App Router and TypeScript application, Supabase for Postgres/Auth/Storage, Stripe-hosted Checkout for one-time payments, and Vercel for the eventual deployment. Follow the exact stable versions and conventions installed in the repository instead of rebuilding the stack.
+
+The following decisions are non-negotiable:
+
+1. Buyers never create an application account and never sign in. Checkout is guest-only. Supabase Auth remains admin-only.
+2. The cart and every Checkout Session are priced entirely from trusted current database records. The browser may submit product identifiers and a cart version, but never an authoritative title, price, currency, tax, discount, asset path, entitlement, or payment state.
+3. Stripe hosts the payment page. The application never renders or accepts card fields and never handles card numbers, CVCs, bank credentials, or wallet credentials.
+4. Use one-time `payment` mode. Do not add subscriptions, saved application payment methods, customer accounts, invoices, coupons, promotion codes, buy-now-pay-later promises, or a custom payment form unless this prompt explicitly requires them.
+5. Eligible payment methods and wallets are managed dynamically by Stripe according to merchant configuration, transaction currency/amount, customer location, device, and method eligibility. Do not hard-code a static `payment_method_types` list or promise that every method appears in every country.
+6. Stripe webhooks—not the browser, success URL, query string, or client callback—are the payment authority. Verify the signature against the untouched raw request body.
+7. Handle immediate and delayed payment methods. `checkout.session.completed` with an unpaid/processing payment is not permission to deliver. A delayed payment becomes paid only after authoritative success, including `checkout.session.async_payment_succeeded` and a current Stripe Session whose payment status is paid.
+8. Event delivery can be duplicated, concurrent, delayed, and out of order. Database transitions and Stripe API calls must be idempotent and recoverable.
+9. A paid order stores immutable commercial and product/deliverable-version references so a later product edit cannot change what the buyer purchased. This step creates no download grant and exposes no private file.
+10. Paid deliverables remain private. A public/browser response must never contain a private bucket key, internal deliverable path, signed URL, rights evidence, or secret.
+11. Step 6 will automatically create download grants and a durable delivery-email job in the same authoritative paid transition. After Stripe confirms an immediate or delayed payment, the buyer must receive a secure, expiring package-access link automatically, normally within 60 seconds, without admin intervention. The email must not contain the large package as an attachment. Preserve a clean atomic extension point for that work.
+12. The browser success page must never create an order, mark an order paid, create a grant, enqueue an email, or trigger fulfillment. It is a read-only status experience even if Stripe documentation describes landing-page fulfillment as an optional optimization.
+13. Free-product acquisition is not sent through paid Stripe Checkout. The free-product/email funnel remains a later step. Do not add a zero-value workaround here.
+14. Only published, rights-cleared, currently purchasable products with a ready immutable private deliverable version may enter checkout.
+15. Use integer minor units and explicit lowercase ISO currency codes everywhere. Never use floating-point money.
+16. Do not enable live charges at the end of Step 5. Add a fail-closed live-payment feature/release gate until Step 6 fulfillment, approved legal policies, tax configuration, production secrets, monitoring, and the final release checklist are complete. Stripe sandbox/test-mode checkout must work fully.
+17. Do not claim tax, consumer-law, payment-method, webhook, refund, or security configuration is production-ready unless it was actually configured and verified in the appropriate Stripe environment.
+
+STEP 5 GOAL
+
+Implement a durable server-backed guest cart, trusted Checkout Session creation, Stripe-hosted guest payment, a signature-verified durable webhook pipeline, idempotent payment/order state, delayed-payment support, an AAL2-protected admin order/refund workflow, reconciliation, and exhaustive Stripe sandbox tests.
+
+At the end of this step:
+
+- a visitor can add currently purchasable paid products to a persistent guest cart without creating an account;
+- the application revalidates all items and prices on the server and creates exactly one appropriate Stripe Checkout Session despite double-clicks/retries;
+- Stripe Checkout collects the buyer's delivery email and presents only eligible configured payment methods;
+- verified webhook events create/update one durable order with immutable item snapshots and correct payment/refund state;
+- delayed payment, expiration, failure, refund, duplicate delivery, concurrency, and out-of-order events behave safely;
+- the success page displays only database-backed status and never performs fulfillment;
+- an AAL2 administrator can inspect orders and initiate a safe idempotent full or partial refund in Stripe test mode;
+- no package email, download token, grant, or signed customer URL exists yet;
+- live charging remains disabled until later release gates are complete.
+
+SCOPE BOUNDARY
+
+Implement in this step:
+
+- a server-owned anonymous cart identified by a high-entropy HttpOnly cookie;
+- accessible add/remove/clear/cart-page interactions, cart count, unavailable/changed-price handling, and expiry;
+- transactional cart mutations and optimistic/concurrent mutation protection;
+- immutable checkout-attempt and checkout-attempt-item snapshots;
+- Stripe SDK setup using a pinned stable GA API version supported by the installed SDK—never a preview/beta API;
+- Stripe-hosted Checkout Session creation in one-time payment mode;
+- Stripe-collected guest email, dynamic eligible payment methods, safe success/cancel URLs, and an explicit session expiry;
+- versioned consent plumbing and tax configuration hooks with a live-release blocker until legally reviewed;
+- a raw-body signature-verified webhook endpoint;
+- a durable private webhook inbox with idempotent processing and reconciliation;
+- immediate and delayed payment states;
+- private orders, immutable order items, financial totals, minimal required customer/tax data, and payment/refund identifiers;
+- a small AAL2 admin orders UI and refund operation;
+- payment/refund audit history and safe redacted diagnostics;
+- Stripe sandbox/CLI test instructions and automated coverage.
+
+Explicitly do not implement:
+
+- buyer registration, login, profile, saved cart across different devices, account library, or password recovery;
+- embedded Checkout, Payment Element, Elements/card fields, a custom payment form, or a custom Express server;
+- subscriptions, recurring billing, stored application payment methods, application-created Stripe Customers by default, promotion codes, coupons, bundles, upsells, adaptive/local currency pricing, or gift cards;
+- free-product acquisition;
+- download grants, customer access pages, hashed download tokens, signed customer download URLs, buyer package emails, resend functionality, or fulfillment workers;
+- final legal wording, legal advice, a final tax-liability decision, or an automatic assumption that Stripe Tax/Managed Payments is enabled;
+- full dispute evidence management, accounting exports, analytics, reviews, or final deployment.
+
+Small payment-risk hooks for later fulfillment are allowed: capture authoritative refund and dispute/hold state so Step 6 can deny or revoke access. Do not build a dispute-management product in this step.
+
+PRE-FLIGHT GATE
+
+Before implementation:
+
+1. Record the branch and current git status. Never reset or discard user changes.
+2. Read `README.md`, `.env.example`, all architecture/security/admin/upload/catalog documents, `package.json`, lockfile, Supabase config, migrations, seeds, generated database types, tests, and every relevant public/admin route.
+3. Run the current formatting, lint, strict TypeScript, unit/component, Supabase reset/migration/seed, generated-type drift, pgTAP/RLS/Storage, auth/admin, storefront E2E, accessibility, SEO, and production-build checks. Record the exact baseline.
+4. Verify Step 4 truly enforces active-admin+AAL2 on admin reads and mutations. Refund administration will depend on that exact guard and must not create another auth system.
+5. Verify paid products cannot be published without a ready immutable private deliverable version. Determine the exact product/asset version identifiers that an order must snapshot.
+6. Verify the existing public DTO contains no private asset key and that cart rendering can use safe catalog fields without expanding the public projection improperly.
+7. Verify money and currency conventions, current catalog cache behavior, application origin configuration, logging/redaction helpers, database transaction conventions, audit mechanism, and test tooling.
+8. Check whether any cart/order/payment tables already exist. Extend sound equivalents rather than creating parallel models.
+9. Confirm no real Stripe key or webhook secret is in source, git history, seed data, screenshots, test fixtures, browser bundles, or logs.
+10. If earlier work is materially incomplete, fix only a small prerequisite regression or stop with a precise blocker. Do not weaken RLS, admin MFA, publication gates, or upload security to proceed.
+
+TRUST BOUNDARY AND HIGH-LEVEL ARCHITECTURE
+
+Use these separate records and responsibilities:
+
+- Guest cart: mutable list of product IDs, owned by possession of a random cookie token, with no buyer PII and no trusted price supplied by the browser.
+- Checkout attempt: immutable server snapshot of one exact cart version, current product versions, prices, currency, license/policy versions, and selected ready deliverable asset versions. It owns the outbound Stripe idempotency key.
+- Stripe Checkout Session: the hosted payment interaction. It contains only opaque internal references in metadata/client reference fields and trusted line items generated from the checkout attempt.
+- Webhook inbox: durable receipt of each signature-verified Stripe event before complex processing, unique by event ID, private, retryable, and safe under duplicate/concurrent delivery.
+- Order: the local source of truth for application payment/fulfillment decisions after reconciling a verified event with the current Stripe object and matching checkout attempt.
+- Order items: immutable commercial and product/deliverable-version snapshots. They are not download grants.
+- Refund records: idempotent requests and authoritative Stripe refund outcomes linked to the order.
+
+The browser talks only to same-origin cart/checkout/status endpoints or Server Actions. It never talks directly to Supabase payment tables or Stripe's secret API. A narrowly scoped server-only Supabase secret client may access private anonymous-cart/payment data because no buyer Supabase identity exists, but it must be isolated in payment/cart repositories and never exposed as a generic database proxy. All inputs to that boundary are revalidated, every database operation is constrained, and RLS/grants deny direct public access.
+
+GUEST CART DESIGN
+
+Implement a server-backed cart rather than treating `localStorage` as the source of truth.
+
+Cart identity:
+
+- Generate at least 256 bits of cryptographically secure randomness on the server.
+- Store only a SHA-256 or HMAC-SHA-256 digest of the token in Postgres; use the project's server-only secret management if a pepper is used.
+- Send the raw token only in an HttpOnly, SameSite=Lax cookie with Path `/`, no Domain, and Secure in production. Prefer a `__Host-` cookie name where environment constraints allow it. Document the safe localhost behavior.
+- Never put the cart token in a URL, HTML, analytics payload, client JavaScript state, log, error report, Stripe metadata, or database plaintext.
+- Rotate/create a fresh cart after conversion or suspicious invalid state. Do not allow a client to choose its cart ID.
+- Set a documented idle/absolute expiry appropriate for a shopping cart, such as roughly 30 days, and delete/expire abandoned records safely.
+
+Cart behavior:
+
+- A digital product may appear at most once. Quantity is fixed at one because each line represents one license. Future multi-seat licensing must be a separate reviewed product/SKU model.
+- Enforce a modest maximum item count, for example 20, plus Stripe-supported amount bounds. Make the chosen limits constants shared by validation and tests.
+- Accept only opaque product IDs/slugs; load the complete authoritative product, price, currency, rights/publish status, purchase availability, and active deliverable version on the server.
+- Reject free products from paid checkout with a clear non-error message that free acquisition is not enabled yet.
+- Reject drafts, archived/unpublished products, missing rights clearance, missing/unready deliverables, invalid/zero/negative/overflow prices, unsupported currency, or cross-currency carts.
+- Use one configured presentment currency in Step 5 unless the existing schema already has a thoroughly tested multi-currency model. Do not turn on Stripe Adaptive Pricing/local currency conversion in this step.
+- Recompute display DTOs from current product data on every server cart read. Never persist the current price in the mutable cart as an authority.
+- If a product changed price/version or became unavailable since the last render, show the exact safe change and require the visitor to review the updated cart before checkout.
+- Keep the cart after cancel or a failed/expired attempt. Mark it converted only after an authoritative paid transition. A later cart interaction after conversion creates a new empty cart without destroying the order link needed by the success page.
+
+Make cart mutations transactional and safe under two tabs/double-clicks. Give the cart a monotonic version and update it atomically; return a typed conflict/current cart if the client submits a stale version. Add/remove must be idempotent. Clear must be explicit. Do not use GET for mutations.
+
+Preserve storefront caching and performance. A per-visitor cookie must not make every public product/catalog page dynamic or privately cached. Render the cart count and personalized cart state through the smallest client/server island or no-store endpoint supported by the existing architecture. Verify that public HTML remains shared/cacheable and that no response with a cart token is placed in a public cache.
+
+The `/cart` page and cart drawer, if the design uses one, must show safe product thumbnail/title, compatibility summary where useful, server-calculated price, subtotal, unavailable/change notices, remove/clear controls, and one primary checkout action. Do not show tax as a fabricated number; say that applicable tax is calculated at Checkout when configured. Do not add shipping fields for digital goods.
+
+DATABASE MODEL AND MIGRATIONS
+
+Adapt names to existing conventions, but provide equivalents of:
+
+1. Guest carts: internal UUID, token digest unique index, state, currency, version, timestamps, last activity, expiry, converted timestamp, and optional converted order reference.
+2. Guest cart items: cart/product unique pair and timestamps. Do not store a client-authoritative price.
+3. Checkout attempts: random internal/public-safe UUID, cart ID/version/fingerprint, state, stable outbound idempotency key, trusted expected subtotal/currency, legal/policy version references, Stripe Session/PaymentIntent identifiers, creation/update/expiry timestamps, failure category, and retry/reconciliation fields.
+4. Checkout attempt items: immutable snapshot of product ID and row/version, title/slug, product type, unit amount, currency, quantity one, customer-facing license version/hash/reference, tax classification reference when configured, and the selected immutable ready deliverable asset/version ID. Never store its private Storage key in any client-facing DTO.
+5. Stripe webhook inbox: Stripe event ID unique, event type, object ID, livemode/environment, API version, signature-verified receipt time, private verified payload or sufficient private processing data, processing state, attempt count, lease/next-attempt fields, processed time, and redacted last error/correlation ID.
+6. Orders: unpredictable public order number, checkout-attempt ID unique, Stripe Checkout Session ID unique, nullable unique PaymentIntent/latest Charge IDs, payment state, fulfillment state fixed to not-started/blocked in this step, currency, subtotal, discount, tax, total, amount refunded, minimal necessary buyer email/tax-location evidence, consent/policy references, paid/failed/refunded timestamps, manual-review/hold reason, and timestamps.
+7. Order items: immutable order ID plus complete commercial snapshot and immutable product/deliverable-version references from the attempt. Quantity remains one.
+8. Refund requests/refunds: order ID, internal request ID/idempotency key, amount in minor units, reason/note with strict limits, requesting admin UID, Stripe Refund ID unique when known, status, Stripe failure code safe subset, and timestamps.
+9. Optional payment state-transition/audit records if the existing append-only Step 4 audit log is not sufficient.
+
+Do not duplicate existing tables or store the same authoritative state in contradictory columns. Define check constraints for currency format, positive amounts, subtotal/tax/total/refund relationships, allowed states, timestamps, quantities, and bounded text. Use partial unique indexes where appropriate, including only one reusable creating/open attempt per exact cart fingerprint. Add indexes for token-digest lookup, cart expiry, Stripe IDs, event processing queue, order number/date/status, email support lookup only if legally justified, and refund state. Verify query plans for worker/admin access patterns.
+
+Keep private payment tables inaccessible through the public Supabase API. Enable RLS where exposed schemas require it, revoke anonymous/authenticated table privileges by default, and allow only:
+
+- the narrowly scoped server secret boundary for cart, checkout, webhook, and public status operations;
+- active AAL2 administrators to read the minimum order/refund/audit data through protected server operations and deliberately narrow RLS where direct authenticated access is used;
+- no browser role to create or modify orders, webhook events, payment state, Stripe IDs, refunds, totals, buyer email, consent evidence, or fulfillment state.
+
+Use narrow transactional database functions for operations requiring locks and multiple writes. Revoke execution from `public`, `anon`, and ordinary authenticated users unless a specific role genuinely needs it. If a function is `security definer`, set a safe empty/fixed `search_path`, schema-qualify every object, validate caller/context internally, and grant only the exact server/admin role. Regenerate checked-in database types.
+
+Prevent updates/deletes to immutable checkout-attempt items and order items after their final state except through a narrowly documented migration/repair procedure. Never cascade-delete paid orders because a cart or product is removed.
+
+CHECKOUT ATTEMPT AND CONCURRENCY PROTOCOL
+
+Create Checkout with a recoverable saga; do not hold a database transaction open during a Stripe network request.
+
+Required sequence:
+
+1. Receive a same-origin POST/Server Action containing only the current cart version and current versioned consent acknowledgement identifiers—not prices or Stripe identifiers.
+2. Apply durable rate limits by cart-token digest and a privacy-preserving IP/device key where practical. Do not use an in-memory Map presented as distributed protection.
+3. Lock/read the cart transactionally. Re-resolve every item from trusted product/rights/asset tables and enforce all purchase gates.
+4. Reject an empty, free-only, stale, mixed-currency, excessive, or changed cart with a refreshed typed cart response instead of silently charging a new total.
+5. Validate required consent evidence is current and bound to this exact cart fingerprint. No prechecked checkbox or hidden consent.
+6. Build a deterministic server cart fingerprint from sorted trusted product/version/price/currency/asset/license/policy facts.
+7. Reuse an existing unexpired open Checkout Session only when its attempt fingerprint and consent versions match exactly. Otherwise create one immutable `creating` checkout attempt and item snapshots under a unique database constraint.
+8. Commit the database transaction.
+9. Create the Stripe Checkout Session with the attempt's stable non-PII idempotency key and exact immutable attempt data.
+10. Persist the returned Session ID, PaymentIntent when available, URL, and expiry, transitioning the attempt to open. Never return the Stripe secret response object to the browser.
+11. Redirect server-side to the exact Stripe-hosted Session URL or return only a narrowly validated redirect URL. Never redirect to a browser-provided URL.
+
+Double-clicks, simultaneous tabs, Vercel retries, client retries, and a timeout after Stripe accepted the request must converge on the same attempt/Session. Use both a database uniqueness/locking rule and a Stripe idempotency key derived from the random attempt ID—not an email or other PII. Never generate a fresh idempotency key for a retry of the same attempt. Never automatically create a second attempt after an ambiguous Stripe error; mark it for reconciliation.
+
+If Stripe creation succeeds but the local update fails, the next retry with the same key must recover the same Session response and persist it. If Stripe returns a persistent ambiguous/5xx idempotent response, do not create another charge path blindly. Surface a safe retry/reconciliation state with a correlation ID.
+
+STRIPE SDK AND CHECKOUT SESSION
+
+Install only the official stable Stripe Node SDK if absent and pin it through the lockfile. Instantiate it in a `server-only` module with the secret key and an explicit stable GA API version compatible with that SDK and the configured webhook destination. Do not use a preview API version, undocumented parameter, or client-side secret.
+
+Create a hosted Checkout Session with these principles:
+
+- `ui_mode` remains the hosted/default page and `mode` is `payment`;
+- line items are generated only from checkout-attempt snapshots;
+- quantity is one for every digital license;
+- use trusted inline one-time `price_data` to avoid a second unsynchronized Stripe catalog unless the repository already has a proven immutable Stripe Price-version mapping; do not create new Stripe Products/Prices on every click;
+- product name/description and optional public cover URL are length-limited and sanitized; never include a private URL or sensitive metadata;
+- currency and unit amount come from trusted integer snapshot fields;
+- any tax code/tax behavior comes from reviewed server configuration/product classification, never the browser;
+- `customer_creation` should remain `if_required` for guest one-time purchases unless a documented legal/operational reason requires Stripe Customers;
+- do not pass `customer_email`; let hosted Checkout collect the delivery email directly because the application has no buyer account/email yet;
+- omit a static `payment_method_types` list so Stripe's dynamic eligible-method behavior and Dashboard configuration apply;
+- enable only payment methods in Stripe Dashboard that have been reviewed and tested, especially delayed methods;
+- do not enable promotion codes or discounts in this step;
+- do not collect phone or shipping address;
+- billing-address/tax-ID collection must be only what the reviewed tax configuration requires;
+- set locale to automatic unless the established storefront locale strategy says otherwise;
+- set an explicit short Checkout expiry within Stripe's allowed range, for example 60 minutes, and document the chosen value;
+- do not enable Session recovery, optional items, Adaptive Pricing, post-purchase invoices, or saved payment-method setup unless separately modeled and approved;
+- set `client_reference_id`, Session metadata, and PaymentIntent metadata only to opaque internal identifiers/schema version needed for reconciliation. Never put buyer email, cart token, rights notes, private paths, prices from the browser, or secrets in metadata;
+- derive success and cancel URLs from one validated server-side canonical application origin, never `Origin`, `Referer`, query input, or host text supplied by the request;
+- use `/checkout/success?session_id={CHECKOUT_SESSION_ID}` or an equivalent fixed route and `/cart?checkout=cancelled`;
+- preserve the literal Stripe placeholder when constructing the success URL;
+- use automatic capture unless a separately reviewed business requirement proves manual capture is necessary.
+
+Dynamic payment methods do not mean every enabled method is suitable. Document the exact sandbox methods tested. A delayed method cannot be enabled for production until pending/succeeded/failed paths pass. Do not advertise a wallet/method merely because its logo exists; eligibility depends on account country, customer country/device, currency, amount, and Dashboard settings.
+
+GUEST EMAIL AND DATA MINIMIZATION
+
+Use `customer_details.email` from the authoritative completed/retrieved Checkout Session as the delivery address source. Validate presence and a conservative maximum length before storing. Preserve the usable address accurately and optionally keep a separate normalized lookup value/hash according to the repository's privacy design; do not invent a customer identity from email equality.
+
+Store no phone/shipping data. Store only billing country/postal/tax IDs or other location evidence that the selected tax/legal process genuinely requires. Leave complete payment-method details at Stripe. Never store card brand/last four unless a documented support need exists; if shown, obtain/display only Stripe's safe fields. Define a retention/deletion policy for abandoned carts, checkout payloads, and customer PII, while preserving financial records for the legally required period after that period is actually determined.
+
+Stripe's payment receipt, if enabled in Dashboard, is separate from the Step 6 package-access email. Do not call a Stripe receipt fulfillment, and do not send an application email in Step 5.
+
+CONSENT AND CONSUMER-LAW PLUMBING
+
+Do not invent legal conclusions or final wording. The merchant country/legal entity and target-market obligations have not yet been approved.
+
+Implement technical support for versioned checkout consent:
+
+- an unchecked, explicit pre-checkout acknowledgement tied to the exact cart fingerprint for any legally required immediate digital-content-performance/withdrawal acknowledgement;
+- policy/license version IDs and content hashes/references recorded in the checkout attempt and immutable order;
+- re-consent when the cart fingerprint or relevant policy version changes;
+- server enforcement so bypassing the checkbox UI cannot create a Session;
+- Stripe Checkout `consent_collection.terms_of_service = required` only when the real Terms URL/account setting and approved policy are configured;
+- record the authoritative Checkout consent result when returned;
+- no marketing consent or preselected promotional opt-in in this step.
+
+Use clear test placeholder labels only in sandbox and mark them not legally approved. Add a fail-closed production readiness setting so live Checkout cannot be enabled until the Terms, privacy notice, refund policy, license, digital-content consent wording, version registry, business identity/contact details, and checkout button wording have been reviewed for the actual jurisdiction. Step 7 will finalize legal content; this step builds evidence plumbing.
+
+TAX ARCHITECTURE AND LIVE GATE
+
+Do not guess tax/VAT/GST treatment from the developer's location or the customer's IP. Implement a documented configuration boundary:
+
+- standard Stripe Tax integration may set `automatic_tax.enabled` only when Stripe Tax is activated, merchant registrations/settings are complete, product tax codes are reviewed, price tax behavior is explicit, and sandbox tests pass;
+- when automatic tax is enabled, let Checkout collect the minimum location fields it needs and use Stripe's resulting subtotal/tax/total as the financial outcome;
+- when tax is not configured, do not display a false tax calculation or silently claim prices include/exclude tax; keep live payments blocked;
+- store the trusted expected pre-tax subtotal and reconcile Stripe currency/subtotal/discount/tax/total into the order using integer minor units;
+- define inclusive versus exclusive price display consistently with the existing catalog and reviewed jurisdiction; do not switch behavior per request without modeling it;
+- do not adopt Stripe Managed Payments or another merchant/tax-liability model automatically. Record it only as an option requiring a separate business/legal decision because it materially changes responsibilities and operations;
+- do not enable Adaptive Pricing in Step 5 because localized presentment changes currency/amount reconciliation and refund/accounting requirements.
+
+Create `docs/TAX_AND_CHECKOUT_LEGAL.md` or an existing equivalent that clearly lists chosen test configuration, unresolved merchant/jurisdiction questions, Stripe account settings still needed, and the exact live-release blockers. Engineering safeguards are not legal or tax advice.
+
+WEBHOOK ENDPOINT
+
+Create one dedicated uncached POST Route Handler such as `/api/stripe/webhook` using the Node runtime required by the official Stripe SDK. It is intentionally public and does not use admin auth or browser CSRF tokens; its authentication is the Stripe signature.
+
+Required ingress behavior:
+
+1. Reject non-POST methods and excessive request size.
+2. Read the request exactly once as raw text/bytes. Do not call `request.json()` or otherwise mutate/re-serialize it before verification.
+3. Require the `Stripe-Signature` header and verify it with the endpoint-specific webhook secret using the official Stripe SDK and its normal timestamp-tolerance behavior.
+4. Reject malformed payloads or invalid/expired signatures with a nondisclosing 400 response.
+5. Verify expected live/test environment/account context where available. Test and live secrets/configuration must be separate.
+6. Accept only the explicitly supported event types. Safely acknowledge unsupported verified events without processing them.
+7. Persist the verified event to the private inbox under a unique Stripe event ID before acknowledging success. Store no unverified event.
+8. Duplicate receipt of the same event ID returns 2xx after confirming the existing durable record; it does not rerun side effects concurrently.
+9. If durable persistence fails, return a retryable 5xx. If persistence succeeds, return 2xx quickly and process through the durable worker path.
+10. Never log the signing secret, raw signature, full payload, customer email/address, Checkout URL, cart token, or PaymentIntent client secret.
+
+Subscribe only to the events actually required. At minimum evaluate and implement:
+
+- `checkout.session.completed`;
+- `checkout.session.async_payment_succeeded`;
+- `checkout.session.async_payment_failed`;
+- `checkout.session.expired`;
+- `refund.created`;
+- `refund.updated`;
+- `refund.failed`;
+- minimal `charge.dispute.created`, `charge.dispute.updated`, and `charge.dispute.closed` hold/review tracking if the repository models future fulfillment safety.
+
+Do not subscribe to all Stripe events. Do not process both redundant Session and PaymentIntent success events in ways that can double-create an order. Checkout Session events are the primary payment lifecycle for this integration.
+
+WEBHOOK INBOX AND PROCESSOR
+
+Build a durable processor around the inbox. It may attempt the small payment transition immediately after durable receipt using the current Next.js post-response mechanism, but correctness must not depend on an in-memory promise or a single Vercel invocation. Provide a scheduled/reconciliation entry point that later deployment can invoke, with authentication and overlap protection. Do not add an external queue vendor without approval.
+
+Worker behavior:
+
+- claim rows transactionally with a lease and `FOR UPDATE SKIP LOCKED` or an equivalent proven concurrency pattern;
+- use bounded exponential retry with jitter, max attempts/age, and a visible dead-letter/manual-review state;
+- retrieve the current relevant Checkout Session/PaymentIntent/Refund/Charge from Stripe where needed rather than trusting event arrival order or a stale snapshot;
+- retrieve all Checkout line items when required and handle pagination;
+- never use the event `created` timestamp to decide ordering or duplication;
+- make every state application safe to repeat and safe under two concurrent workers;
+- process a second distinct event object for the same Stripe resource as a no-op or valid update according to current authoritative state;
+- use monotonic state transitions so an older failure/processing event cannot regress a paid/refunded order;
+- keep network calls outside long-held database row locks, then apply the verified result in a short transaction with compare-and-set/current-state checks;
+- preserve a redacted failure code and correlation ID, not raw PII/secrets;
+- purge/null the private full event payload after a documented short retention period once durable business fields exist, while retaining the event envelope/processing audit needed for reconciliation.
+
+Stripe currently retains retrievable Events for a limited period, so the local durable inbox and prompt reconciliation are mandatory. Add an authenticated operator/admin reconciliation action or server-only script plus scheduled scan for stuck inbox rows, creating/open attempts beyond thresholds, Sessions missing after a local update failure, pending payments, paid Sessions without an order, and pending refunds. Reconciliation must retrieve Stripe state and call the same idempotent transition functions, never manually set `paid = true`.
+
+PAYMENT AND ORDER STATE MACHINE
+
+Keep Checkout attempt, payment, refund, dispute/hold, and fulfillment states separate. Do not overload one Boolean.
+
+At minimum support the semantics:
+
+- Session created/open: visitor may pay; no order entitlement.
+- Session completed but `payment_status` is unpaid/processing: create or update a pending order/attempt as appropriate, record email/totals safely, and wait. No paid state or future fulfillment trigger.
+- Immediate completed Session whose freshly retrieved `payment_status` is `paid`: atomically upsert exactly one paid order and immutable items.
+- `checkout.session.async_payment_succeeded`: retrieve current Session; only if it is paid, perform the same idempotent paid transition.
+- `checkout.session.async_payment_failed`: mark the attempt/order payment failed without deleting history; allow a new reviewed checkout attempt from the cart.
+- `checkout.session.expired`: expire the attempt; keep/reopen the unpaid cart safely and never create an entitlement.
+- Refund created/updated/failed: reconcile individual refund and aggregate amount with Stripe; represent pending, succeeded, failed, partial, and full outcomes accurately.
+- Dispute created: put the order on a future-fulfillment hold/review state. Later dispute changes update the separate dispute state without pretending a refund occurred.
+
+The paid transition must run in one database transaction and:
+
+1. lock/re-read the checkout attempt/order;
+2. match the opaque attempt reference, Stripe Session ID, environment, currency, trusted expected subtotal, Stripe line items/totals, and PaymentIntent;
+3. verify the Session is actually paid—not merely complete;
+4. verify customer delivery email exists;
+5. detect a materially mismatched amount/currency/item set, rights recall, unavailable asset, or invalid metadata and put the payment into a visible `manual_review`/fulfillment-hold state rather than issuing access;
+6. upsert one order under unique Session/attempt identifiers;
+7. insert immutable order-item snapshots from the trusted attempt, including the purchased deliverable asset version reference and policy/license references;
+8. record Stripe financial totals, identifiers, and authoritative paid time;
+9. mark the cart converted and attempt completed;
+10. write safe audit/state-transition events;
+11. expose one documented transactional extension point where Step 6 will atomically create download grants and a delivery outbox job before commit.
+
+Do not call an email provider, issue a token, sign a Storage URL, or attach a package in this transaction during Step 5. Set fulfillment to `not_started` or `blocked_until_step_6` explicitly so nobody mistakes payment for delivery readiness.
+
+Price changes after Session creation do not rewrite the attempt/order. Honor the exact valid short-lived Checkout snapshot if payment succeeds. If a product is unpublished normally after Session creation but the purchased asset/version and rights remain valid, follow the documented sale policy. If rights are revoked, the asset is quarantined, or fulfillment is legally/technically unsafe before payment completes, accept and record the authoritative payment but put it on manual-review/automatic-refund consideration; never silently substitute a different file.
+
+SUCCESS, PENDING, FAILURE, AND CANCEL UX
+
+The success page is server-rendered/private/no-store and uses the fixed Session ID only as a lookup hint. It must also bind the attempt to the current guest cart cookie or another high-entropy status capability created server-side; possession of a guessed/order/session identifier alone must not reveal order or email data.
+
+It may read only a narrow local status DTO:
+
+- processing: payment confirmation is pending; explain that no delivery should be expected until confirmation;
+- paid: payment is confirmed, but during Step 5 state honestly that secure delivery is not enabled until Step 6/test completion—never falsely claim an email was sent;
+- failed: payment failed and no package was delivered; provide a safe route back to a reviewed cart/new Session;
+- expired/cancelled: no confirmed payment; preserve the cart;
+- manual review: show a generic support-oriented message without internal risk details;
+- refunded/partially refunded where appropriate.
+
+Use bounded polling of a same-origin no-store status endpoint with progressive backoff for webhook latency, then stop and provide refresh/help guidance. Poll only the local database. The page must not retrieve Stripe and mutate payment/order state, and it must never call fulfillment. Do not display full email, billing address, private order internals, Stripe metadata, or a private asset reference.
+
+The cancel URL is not a failure webhook and does not mark payment failed. A visitor can press Back or complete payment in another tab. Treat it as navigation only and read current authoritative state.
+
+ADMIN ORDER AND REFUND OPERATIONS
+
+Extend the existing Step 4 admin area with AAL2-protected equivalents of:
+
+- `/admin/orders` with server pagination and filters for order number, date, payment/refund/hold state, and carefully designed support email lookup;
+- `/admin/orders/[id]` with immutable items, safe Stripe identifiers, totals, payment timeline, consent/policy versions, redacted/minimal buyer information, webhook/reconciliation health, refund history, and future fulfillment state;
+- a retry/reconcile operation that retrieves Stripe state and invokes the normal processor rather than allowing a manual paid toggle.
+
+Every page/action remains dynamic/no-store/noindex and calls the central active-admin+AAL2 guard. Order/payment rows are never client-editable. There must be no button or SQL/API path to mark an order paid manually.
+
+Implement safe test-mode refunds:
+
+1. An AAL2 admin opens a known paid order. The client never supplies an arbitrary PaymentIntent/Charge ID.
+2. The UI shows refundable amount in integer-minor-unit-safe formatting, requires an explicit full/partial choice, reason, and confirmation naming the order/amount.
+3. Server validation reloads the order, payment state, currency, successful/refunded totals, and current concurrency version.
+4. A transaction reserves/creates one refund request with a random stable Stripe idempotency key and prevents concurrent over-refund.
+5. Outside the transaction, call Stripe Refunds using the order's trusted PaymentIntent/Charge and idempotency key.
+6. Persist the returned Refund ID/state. Webhook/reconciliation remains authoritative for final pending/succeeded/failed status.
+7. If the local update fails, retry with the same key. Never create a second refund blindly.
+8. Audit actor, amount, safe reason/category, request, and outcome. Never log the customer's payment data.
+9. A successful partial/full refund sets the future entitlement-revocation signal that Step 6 will enforce, but no grant exists to revoke in Step 5.
+
+Support refunds initiated from Stripe Dashboard by linking verified `refund.*` events back to an order. Never assume every refund succeeds immediately; some can be pending or fail. Full/partial totals must be reconciled from Stripe. Do not implement direct cash/manual refunds as if Stripe processed them.
+
+SECURITY REQUIREMENTS
+
+- Keep `STRIPE_SECRET_KEY`, every webhook signing secret, Supabase secret key, cart-token pepper, and worker/reconciliation secret in validated server-only environment modules. None may use a `NEXT_PUBLIC_` prefix.
+- Pure hosted Checkout does not need Stripe.js/card Elements in the browser. Do not add an unnecessary publishable-key client integration.
+- Use different Stripe sandbox/test and live secrets/webhook endpoints. Fail closed on a test/live mismatch.
+- Add an explicit server-side live-checkout enable flag/release assertion. Even with an accidental live key, refuse Session creation until the later release prerequisites are intentionally enabled.
+- Build success/cancel URLs only from a configured canonical origin allow-list. Do not reflect request hosts into redirects.
+- Use POST and same-origin/CSRF protection for cart/checkout/status mutations as applicable. The Stripe webhook is exempt from browser CSRF and protected by signature verification.
+- Rate-limit cart writes and Checkout creation with a cross-instance/durable mechanism. Reuse open Sessions to limit Stripe/API abuse.
+- Validate every identifier, length, item count, amount, currency, and state. Guard integer overflow and zero-decimal-currency formatting rules.
+- Never trust Stripe metadata alone. Match it to locally persisted attempt/session identifiers and freshly retrieved Stripe state.
+- Never trust a success query parameter, Session status supplied by the browser, or webhook event type without checking the current object/payment status.
+- Do not expose sequential internal order IDs. Public order numbers/capabilities must be unpredictable enough not to enable enumeration.
+- Public and buyer-status responses must be narrow DTOs with no email, raw Stripe object, webhook payload, audit payload, private asset path, secret, or internal risk reason.
+- Admin list views should mask email by default where workable; full PII appears only when operationally necessary on the protected detail view.
+- Redact sensitive query parameters and Stripe identifiers according to the existing logging policy. Never log full webhook bodies.
+- Apply a strict retention plan to webhook payloads and abandoned carts; do not delete financial/audit records prematurely.
+- Use Stripe Radar/hosted fraud capabilities rather than inventing a browser fraud score. Document Dashboard configuration still required.
+- Do not claim PCI compliance or a specific SAQ result; document that hosted Checkout minimizes card-data exposure and that formal compliance remains an operational responsibility.
+
+AUDIT AND OBSERVABILITY
+
+Use the existing append-only audit mechanism for:
+
+- checkout attempt creation/failure/reconciliation without buyer PII;
+- payment transition to pending/paid/failed/manual review;
+- order creation;
+- refund request and outcome;
+- admin reconciliation;
+- dispute/fulfillment hold changes;
+- live-payment gate/configuration changes if the application models them.
+
+Structured logs may contain correlation ID, Stripe event ID/type, safe internal attempt/order ID, state transition, duration, and result. They must not contain email, address, raw payload, cart token, secret/signature, Checkout URL, or private asset data. Provide metrics-ready counters for inbox backlog/age, processing failures, Sessions created, pending/paid/failed payments, amount mismatches, refunds, and reconciliation findings, while leaving full monitoring integration to Step 8.
+
+Make stuck/dead-letter events and paid/manual-review orders visible to AAL2 admins. A temporary processing failure must not disappear behind a successful webhook response.
+
+ACCESSIBILITY AND USER EXPERIENCE
+
+Use the existing design system. The cart, status pages, admin order table/detail, confirmation dialogs, and error states must be responsive from 320 px upward and meet the repository's WCAG 2.2 AA target.
+
+- Provide proper page/section headings, labels, table captions or responsive alternatives, focus order, visible focus, and keyboard operation.
+- Announce add/remove/subtotal updates through a restrained live region and move focus sensibly after item removal.
+- Do not communicate unavailable/changed/pending/paid/refunded state by color alone.
+- Disable the checkout submit control while its request is pending but rely on server idempotency for correctness.
+- Show a real progress label during Session creation and recover cleanly from network errors without clearing the cart.
+- Clearly disclose that payment occurs securely on Stripe and that applicable methods appear there; do not show unsupported payment logos.
+- Use accessible localized money formatting from integer minor units.
+- Keep legal acknowledgements readable, linked, unchecked, and separate from marketing.
+- Treat a delayed payment as pending, not as a scary generic error and not as successful delivery.
+
+TESTING REQUIREMENTS
+
+Add deterministic tests at database, domain, route/action, component, and E2E levels. Mock Stripe only where isolation is necessary; also test webhook signature construction with the official SDK and run real Stripe sandbox/CLI flows when credentials are available. Never use real card data or live charges for development tests.
+
+Cart/domain tests must cover:
+
+- random token generation, digest lookup, cookie flags, expiry, rotation, and invalid/tampered/missing tokens;
+- add idempotency, duplicate item, remove missing item, clear, concurrent tabs, and stale version conflict;
+- maximum items, fixed quantity one, free product, unpublished/archived/rights-revoked/missing-deliverable product, invalid amount, integer boundary, and mixed currency;
+- server price lookup ignoring a forged client price/title/currency/asset;
+- price/version change review before checkout;
+- cart conversion/new-cart behavior;
+- no PII/token in responses, URLs, caches, analytics, or logs;
+- public catalog caching remains intact despite personalized cart state.
+
+Checkout creation tests must cover:
+
+- empty/stale/invalid cart rejection;
+- consent absent, outdated, or bound to a different fingerprint;
+- exact trusted line items, quantity, currency, metadata allow-list, fixed origin URLs, guest email collection, and dynamic-method configuration;
+- no phone/shipping/promotion/subscription/saved-method/adaptive-pricing features;
+- double-click/concurrent request returning one attempt/Session;
+- retry after timeout using the same Stripe idempotency key;
+- Stripe success followed by local persistence failure and recovery;
+- ambiguous Stripe failure held for reconciliation rather than a duplicate Session;
+- open Session reuse only for an exact unchanged fingerprint;
+- changed cart/policy creating a new attempt;
+- rate limits and safe error/correlation messages;
+- live Stripe key/gate mismatch refusal.
+
+Webhook tests must cover:
+
+- valid official SDK signature and untouched raw body;
+- missing/invalid/expired signature, malformed payload, wrong secret/environment, and oversized request;
+- unverified events never reaching the inbox;
+- duplicate same event ID, concurrent duplicate delivery, and safe unsupported verified events;
+- two distinct event IDs for the same object/type remaining idempotent;
+- inbox persistence failure returning 5xx and success returning promptly;
+- worker lease, crash/retry, exponential backoff, dead-letter visibility, and two-worker concurrency;
+- out-of-order completion/failure/success/refund events without state regression;
+- current Stripe object retrieval/reconciliation rather than event timestamp ordering;
+- no raw payload/PII/secret in logs or public/admin list DTOs.
+
+Payment/order tests must cover:
+
+- immediate paid Session creates exactly one order/items and converts the cart;
+- completed but unpaid delayed Session stays pending and creates no future fulfillment trigger;
+- async success creates/marks paid exactly once;
+- async failure leaves no entitlement and allows safe retry;
+- expired Session preserves unpaid cart;
+- amount, currency, Session ID, environment, line item, email, product version, and asset-version mismatch routes to manual review;
+- immutable order/attempt items cannot be edited/deleted by browser/admin clients;
+- product edits after checkout cannot alter the snapshot;
+- success/cancel/status routes cannot create or mutate payment/order state;
+- an unrelated user with another cart cookie cannot enumerate status/order details;
+- no download grant, token, signed URL, email job, or package email is created.
+
+Refund/admin tests must cover:
+
+- anonymous, non-admin, disabled-admin, and AAL1 denial on every order/refund/reconcile route/action;
+- AAL2 order pagination/filter/detail with no public caching;
+- no manual paid-state mutation;
+- full and partial refund requests in minor units;
+- concurrent requests cannot exceed remaining refundable amount;
+- trusted PaymentIntent/Charge loaded from order, never client input;
+- Stripe API retry uses the same idempotency key;
+- local failure after Stripe creation recovers one refund;
+- pending/succeeded/failed refund events and Dashboard-originated refunds reconcile correctly;
+- refund/dispute creates the future fulfillment hold/revocation signal;
+- audit records are safe and append-only.
+
+Stripe sandbox/manual E2E matrix must include, where the enabled methods support it:
+
+- successful card payment;
+- a card requiring 3D Secure/authentication;
+- declined card/payment failure;
+- user cancel/back and later completion in another tab;
+- Session expiry;
+- at least one reviewed delayed payment method success and failure path, or a precise blocker if the Stripe account/country does not support one;
+- duplicate and manually resent webhook;
+- webhook downtime/recovery and reconciliation;
+- full and partial refund plus a failed/pending refund simulation where Stripe tooling supports it;
+- test-mode wallet rendering on eligible HTTPS/device environments where practical;
+- tax calculation across representative sandbox locations only after tax is configured.
+
+Use Stripe CLI/sandbox tools and their current official test values. Do not put test card numbers into server source or automated server API calls when an official PaymentMethod fixture is appropriate. Do not load-test Stripe sandbox endpoints.
+
+Run the full Steps 1–4 regression suite plus format, lint, strict TypeScript, database reset/migrations/seed, pgTAP/RLS, generated types, unit/integration/component tests, E2E/accessibility/SEO, production build, secret scan, and dependency scan. Inspect the production client bundle for Stripe/Supabase secrets, webhook payload fields, cart pepper, private paths, and server-only modules.
+
+If a Stripe account, sandbox capability, CLI, delayed method, wallet/device, Stripe Tax registration, legal copy, cron scheduler, or hosted webhook URL is unavailable, run all unaffected automated tests and list the exact unverified scenario, command/setting, reason, and release consequence. A mock does not count as a live Stripe sandbox pass.
+
+DOCUMENTATION DELIVERABLES
+
+Create or update:
+
+1. `docs/CART.md` — identity/cookie model, data flow, mutation/version rules, expiry/cleanup, limits, product validation, caching strategy, free-product exclusion, and failure UX.
+2. `docs/PAYMENTS.md` — Checkout attempt saga, Stripe SDK/API version, trusted pricing, exact Session configuration, dynamic payment methods, guest email, success/cancel/status behavior, state machines, order snapshots, and Step 6 extension point.
+3. `docs/STRIPE_WEBHOOKS.md` — raw-body verification, endpoint configuration, exact subscribed events, inbox/lease/retry/dead-letter processing, duplicate/out-of-order handling, reconciliation, CLI commands, secret rotation, and redacted logging.
+4. `docs/REFUNDS.md` — admin flow, idempotency, partial/full/pending/failed behavior, Dashboard-originated reconciliation, future entitlement hold/revocation, and limitations.
+5. `docs/TAX_AND_CHECKOUT_LEGAL.md` — test behavior, consent evidence, tax configuration boundary, unresolved jurisdiction/entity decisions, required Stripe Dashboard/legal settings, and explicit live blockers without pretending to give legal advice.
+6. `docs/DATA_RETENTION.md` or existing privacy document — cart, webhook payload, payment/PII, and financial-record retention/deletion approach, with unknown statutory periods clearly pending review.
+7. `docs/ARCHITECTURE.md` and `docs/SECURITY.md` — only the actual final trust boundaries, threats, secrets, RLS/grants, idempotency, CSRF, rate-limit, privacy, and reconciliation decisions.
+8. `docs/OPERATIONS.md` — sandbox setup, webhook forwarding, event replay/reconciliation, stuck-event handling, refund recovery, live gate, key/webhook-secret rotation, and incident procedures.
+9. `docs/ROADMAP.md` — mark Step 5 complete only after acceptance checks pass; keep Steps 6–9 pending and preserve the under-60-second confirmed-payment email invariant.
+10. README and `.env.example` — actual local Stripe sandbox/CLI commands and environment variable names/descriptions only, never secret values.
+
+Document exact Stripe Dashboard/Workbench tasks that code cannot perform: branding/business details, tested payment methods, webhook destination URL/API version/event allow-list, webhook signing secret, receipts, Radar settings, Terms/privacy URLs, tax registrations/settings, live/test separation, and later production domain.
+
+REQUIRED COMPLETION CHECKS
+
+Run and report the repository's exact commands for:
+
+- formatting check;
+- lint;
+- strict TypeScript checking;
+- unit/component/integration tests;
+- Supabase reset, all migrations, and seed;
+- pgTAP/RLS/function/grant tests for carts, attempts, events, orders, order items, refunds, and admin access;
+- generated database type drift check;
+- cart/checkout/webhook/payment/refund E2E tests;
+- Stripe sandbox and CLI scenarios actually possible in the environment;
+- full storefront/admin/auth/upload/accessibility/SEO regression suite;
+- production build;
+- secret and dependency scans already configured;
+- production bundle inspection.
+
+Also provide evidence for representative database query plans, simultaneous/deduplicated request tests, duplicate/out-of-order webhook tests, an immediate payment, a delayed-payment path, refund reconciliation, success-page non-authority, cookie/cache headers, mobile/desktop cart and status screens, and AAL2 admin order/refund screens. Redact all keys, signatures, emails, addresses, card/test payment details, Checkout URLs, Session/PaymentIntent IDs where screenshots leave the development context, cart tokens, and private asset references.
+
+ACCEPTANCE CRITERIA
+
+Step 5 is complete only when all of the following are true:
+
+1. Steps 1–4 remain green, including public catalog caching/SEO/media and admin AAL2/upload/publication security.
+2. No buyer account or customer login exists. A persistent server-backed cart works through an opaque high-entropy HttpOnly cookie whose database value is only a digest.
+3. Cart mutations are transactional, versioned, idempotent, bounded, accessible, and safe under double clicks/tabs; product quantities are one.
+4. Free, unpublished, rights-blocked, unavailable, cross-currency, malformed-price, or missing-ready-deliverable products cannot reach Checkout.
+5. Browser-supplied price/title/currency/tax/asset/entitlement/payment state is ignored; every Session line is derived from a trusted immutable attempt snapshot.
+6. Public storefront pages retain deliberate shared caching and never leak/set a cart token in public cached output.
+7. One unchanged cart/consent fingerprint produces at most one reusable open Checkout Session despite retries/concurrency; outbound Stripe calls use a stable non-PII idempotency key.
+8. Checkout is Stripe-hosted, one-time, guest, email-collecting, and uses Dashboard-managed dynamic eligible payment methods without a static method list or card fields in the application.
+9. Success/cancel URLs use a configured origin; Checkout metadata is minimal/opaque; no adaptive pricing, coupons, subscription, shipping, saved-method, free-order, or unapproved feature slipped in.
+10. Legal consent and tax plumbing are versioned and server-enforced, while final legal/tax decisions remain explicit live blockers rather than guessed claims.
+11. The webhook verifies the exact raw body/signature, durably stores verified events before 2xx, rejects invalid events, and exposes no secret/PII in logs.
+12. The inbox/processor handles duplicate, concurrent, out-of-order, retry, crash, and dead-letter scenarios; reconciliation uses the same idempotent transition logic.
+13. Immediate and delayed payments transition correctly; a completed-but-unpaid Session remains pending and can never trigger paid/future fulfillment behavior.
+14. A paid Session creates exactly one order and immutable item snapshots, including purchased product/deliverable versions, with verified currency/items/totals/email and a manual-review path for mismatches.
+15. The paid transaction exposes the documented Step 6 atomic extension point but creates no grant, access token, signed URL, email outbox job, or package email in Step 5.
+16. The success page and polling endpoint are narrow, bound to the visitor capability, no-store, read-only, and provably unable to create/mark/fulfill an order.
+17. Order, item, event, refund, email, Stripe IDs, and private asset data are inaccessible through public Supabase roles and public DTOs.
+18. AAL2 admins can inspect orders and perform idempotent, concurrency-safe test-mode full/partial refunds; Stripe webhook/reconciliation provides final refund status.
+19. Dashboard-originated refunds and minimal dispute holds are safely reconciled for future entitlement revocation.
+20. Cart, payment, and admin UI meets accessibility/responsive requirements with no serious/critical automated violations.
+21. Stripe sandbox tests cover success, authentication, failure, cancellation/expiry, duplicate webhooks, delayed success/failure where available, and refunds, with precise blockers for anything genuinely unavailable.
+22. No secret, raw webhook payload, buyer PII, cart token, Checkout URL, private path, signed URL, or server-only module appears in public responses/client bundles/log fixtures.
+23. Live Checkout is fail-closed until Step 6 fulfillment, approved legal/tax settings, production configuration, monitoring, and final deployment gates are completed.
+24. No customer delivery email or file access is implemented, and the future invariant remains explicit: verified immediate/delayed payment must atomically create a durable delivery job and normally send the secure expiring package-access email within 60 seconds, never from the success page and never as a large attachment.
+25. Documentation matches actual behavior, includes exact operator procedures and settings still pending, and leaves Step 6+ work pending.
+
+FINAL RESPONSE FORMAT
+
+When finished, provide:
+
+1. concise outcome and whether Step 5 is truly complete;
+2. guest cart identity, persistence, concurrency, expiry, and cache architecture;
+3. database migrations, constraints, indexes, RLS/grants, and immutable snapshot model;
+4. Checkout-attempt saga and exact Stripe Checkout configuration;
+5. webhook verification, inbox/processor, state machine, retries, and reconciliation;
+6. immediate/delayed payment, order, refund, and dispute-hold behavior;
+7. success/cancel/status and AAL2 admin order/refund UX;
+8. consent, tax, privacy/retention decisions and unresolved live blockers;
+9. important files changed;
+10. exact commands run with pass/fail/not-run results;
+11. Stripe sandbox/CLI scenarios and redacted evidence actually completed;
+12. security, accessibility, performance/cache, query-plan, and bundle-inspection evidence;
+13. earlier-step fixes, assumptions, residual risks, and precise blockers;
+14. explicit confirmation that buyer accounts, free acquisition, grants, access tokens, signed customer URLs, package email delivery, reviews, analytics, and deployment remain unimplemented;
+15. confirmation that live charging remains disabled and that the future confirmed-payment-to-secure-email requirement, normally under 60 seconds, is preserved;
+16. the recommended next prompt title: `Step 6 — Secure digital fulfillment and automatic delivery email`.
+
+Stop after Step 5. Do not proceed to Step 6.
+
+Step 5 validation references
+
+Stripe Checkout fulfillment
+
+Stripe Checkout Session creation
+
+Stripe dynamic payment methods
+
+Stripe guest customers
+
+Stripe webhook security and reliability
+
+Stripe event types
+
+Stripe idempotent requests
+
+Stripe testing
+
+Stripe refunds
+
+Stripe Refund API
+
+Stripe Tax with Checkout
+
+Next.js Route Handlers
+
+Next.js after
+
+Supabase Row Level Security
+
+OWASP Third-Party Payment Gateway Integration
+
+OWASP Cross-Site Request Forgery Prevention
