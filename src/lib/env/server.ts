@@ -45,6 +45,14 @@ const serverEnvSchema = z.object({
   LIVE_CHECKOUT_ENABLED: z
     .preprocess((v) => v === "1" || v === "true" || v === true, z.boolean())
     .default(false),
+  // --- Step 6 email/cron secrets (server-only) ---
+  RESEND_API_KEY: z.string().trim().or(z.literal("")).default(""),
+  RESEND_WEBHOOK_SECRET: z.string().trim().or(z.literal("")).default(""),
+  RESEND_FROM_EMAIL: z.string().trim().or(z.literal("")).default(""),
+  CRON_SECRET: z.string().trim().or(z.literal("")).default(""),
+  FULFILLMENT_ROOT_KEY_HEX: z.string().trim().or(z.literal("")).default(""),
+  FULFILLMENT_PREV_KEY_HEX: z.string().trim().or(z.literal("")).default(""),
+  FULFILLMENT_KEY_VERSION: z.coerce.number().int().min(0).default(1),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

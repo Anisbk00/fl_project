@@ -149,15 +149,40 @@ refund flows, and the full Stripe sandbox E2E require a live Stripe account
 a configured environment. **No mock counted as a real Stripe pass; live Checkout
 is fail-closed until Step 6 + legal/tax + monitoring + release gates.**
 
-## Step 6 — Secure digital fulfillment *(unimplemented)*
+## Step 6 — Secure digital fulfillment ✅ COMPLETE (architecture + verifiable crypto/fulfillment logic; live verification blocked)
 
-Implement private deliverables, order-item snapshots, hashed download tokens,
-email delivery, short-lived signed URLs, expiry/revocation/download limits,
-delayed-payment handling, refund revocation rules, resend/recovery flow
-without customer accounts, and fulfillment reconciliation.
+Implemented the complete paid-order-to-private-download fulfillment architecture
++ the verifiable pure-logic crypto + fulfillment domain. Live Resend/Storage/
+webhook/E2E verification is a documented blocker.
 
-**Not started.** (The `product_deliverables` model and the "never in public
-reads" rule are already in place from Step 1.)
+**Implemented (code):**
+- SQL migration `0007_fulfillment.sql`: `fulfillment_generations`,
+  `fulfillment_entitlements`, `download_access_tokens` (HMAC digest +
+  AES-256-GCM ciphertext), `download_access_sessions`, `delivery_messages`,
+  `fulfillment_outbox` (queue with lease/SKIP LOCKED), `email_webhook_inbox`,
+  `download_url_issuances`; RLS denies anon/authenticated (AAL2 admin read-only);
+  `after_order_paid_extension` filled with atomic entitlement + token + message +
+  outbox creation; `revoke_fulfillment` refund/dispute transition.
+- Pure crypto core (unit-tested): 256-bit token gen, HKDF-derived subkeys,
+  HMAC digest, AES-256-GCM encrypt/decrypt with AAD, key-version rotation.
+- Pure fulfillment domain (unit-tested): entitlement state machine, signed-URL
+  quota + reservation/finalize/release, refund/dispute revocation, immutable
+  email payload (HTML escaping + CRLF defense + payload hash), recovery/resend
+  logic (generic response, token reuse vs rotation, rate-limit), filename
+  sanitization.
+- Routes: `/downloads/access` (fragment client + Continue + manual paste),
+  `/downloads` (portal, honest state), `/api/resend/webhook` (raw-body Svix
+  verify), `/api/cron/fulfillment-drain` (Bearer CRON_SECRET).
+- Env: `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `RESEND_FROM_EMAIL`,
+  `CRON_SECRET`, `FULFILLMENT_ROOT_KEY_HEX`, `FULFILLMENT_PREV_KEY_HEX`,
+  `FULFILLMENT_KEY_VERSION` (server-only, fail-closed).
+- Docs: `FULFILLMENT.md`, `DOWNLOAD_SECURITY.md`, `EMAIL_DELIVERY.md`,
+  `RECOVERY.md`.
+
+**Honest blockers (sandbox):** real token exchange, real signed-URL issuance,
+real Resend email delivery, real webhook processing, real outbox worker, and
+full E2E require a live Resend account + live Supabase Storage + a Vercel
+production plan (minute cron). No mock counted as a live pass.
 
 ## Step 7 — Trust, legal pages, reviews, and growth features *(unimplemented)*
 
