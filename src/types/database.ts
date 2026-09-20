@@ -39,19 +39,22 @@ export type Database = {
           note: string | null;
           created_at: string;
           updated_at: string;
+          active: boolean;
+          display_name: string | null;
+          disabled_at: string | null;
+          disabled_by: string | null;
         };
         Insert: {
           user_id: string;
           note?: string | null;
           created_at?: string;
           updated_at?: string;
+          active?: boolean;
+          display_name?: string | null;
+          disabled_at?: string | null;
+          disabled_by?: string | null;
         };
-        Update: {
-          user_id?: string;
-          note?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
+        Update: Partial<Database["public"]["Tables"]["admin_users"]["Insert"]>;
         Relationships: [];
       };
       genres: {
@@ -128,6 +131,7 @@ export type Database = {
           created_by_id: string | null; // admin audit, never public
           updated_by_id: string | null; // admin audit, never public
           search_vector: string | null; // generated FTS column (Step 3), never public
+          row_version: number; // optimistic concurrency (Step 4)
         };
         Insert: {
           id?: string;
@@ -336,6 +340,21 @@ export type Database = {
       };
       list_free_products: {
         Args: Record<string, never>;
+        Returns: unknown;
+      };
+      // Step 4 admin/security functions (SECURITY DEFINER; AAL2-enforced).
+      is_active_admin: { Args: Record<string, never>; Returns: boolean };
+      aal2: { Args: Record<string, never>; Returns: boolean };
+      publish_product: {
+        Args: { p_product_id: string; p_expected_version: number };
+        Returns: unknown;
+      };
+      archive_product: {
+        Args: { p_product_id: string; p_expected_version: number };
+        Returns: unknown;
+      };
+      unpublish_product: {
+        Args: { p_product_id: string; p_expected_version: number };
         Returns: unknown;
       };
     };

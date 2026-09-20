@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
 
 function sanitizeHref(href: string | undefined): string | undefined {
-  if (!href) return undefined;
+  if (!href || !href.trim()) return undefined;
   // Relative links are allowed (same-origin).
   if (href.startsWith("/") || href.startsWith("#")) return href;
   try {

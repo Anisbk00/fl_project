@@ -11,13 +11,17 @@ export function EmptyState({
   description,
   action,
   className,
+  titleAs = "h3",
 }: {
   icon?: ReactNode;
   title: string;
   description?: ReactNode;
   action?: ReactNode;
   className?: string;
+  /** Heading level for the title. Page-level empty states should use h1. */
+  titleAs?: "h1" | "h2" | "h3";
 }) {
+  const Tag = titleAs;
   return (
     <div
       className={cn(
@@ -28,7 +32,9 @@ export function EmptyState({
       <div className="text-ink-muted" aria-hidden="true">
         {icon ?? <PackageOpen className="h-8 w-8" />}
       </div>
-      <h3 className="t-heading-3 text-ink">{title}</h3>
+      <Tag className={cn(titleAs === "h1" ? "t-heading-1" : "t-heading-3", "text-ink")}>
+        {title}
+      </Tag>
       {description ? (
         <p className="t-body-sm text-ink-secondary max-w-md">{description}</p>
       ) : null}

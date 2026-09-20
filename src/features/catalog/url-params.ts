@@ -44,17 +44,20 @@ export const SORT_LABELS: ReadonlyArray<{ value: SortKey; label: string }> = [
 const productTypeSet = new Set<string>(PRODUCT_TYPES);
 const sortSet = new Set<string>(SORT_KEYS);
 
-const csv = z
-  .string()
-  .transform((s) => s.split(",").map((x) => x.trim()).filter(Boolean));
-
 const stringArray = (max: number) =>
-  z
-    .array(z.string().trim().toLowerCase().max(80))
-    .max(max)
-    .or(csv.transform((a) => a.map((x) => x.toLowerCase())))
-    .transform((a) => (Array.isArray(a) ? a : [a]))
-    .pipe(z.array(z.string().trim().toLowerCase().max(80)).max(max));
+  z.preprocess(
+    (v) => {
+      if (v == null) return [] as string[];
+      if (Array.isArray(v)) {
+        return v.filter((x): x is string => typeof x === "string" && x.trim() !== "");
+      }
+      if (typeof v === "string") {
+        return v.split(",").map((x) => x.trim()).filter(Boolean);
+      }
+      return [] as string[];
+    },
+    z.array(z.string().trim().toLowerCase().max(80)).max(max),
+  );
 
 /** Zod schema for catalog search params (server-boundary validation). */
 export const catalogParamsSchema = z
@@ -244,6 +247,20 @@ export function parseCatalogParams(
       (collected[k] as string[]).push(v);
     } else {
       collected[k] = [collected[k] as string, v];
+    }
+  }
+  // Map singular URL/form param names to plural schema fields.
+  // (serializeCatalogParams writes singular names: type=X&type=Y for
+  // multi-select form-friendliness; the schema fields are plural arrays.)
+  const remap: Record<string, string> = {
+    type: "types",
+    genre: "genres",
+    plugin: "plugins",
+  };
+  for (const [from, to] of Object.entries(remap)) {
+    if (from in collected && !(to in collected)) {
+      collected[to] = collected[from]!;
+      delete collected[from];
     }
   }
   Object.assign(record, collected);

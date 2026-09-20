@@ -38,7 +38,7 @@ export function LegalDraft({
                 Last updated {lastUpdated}
               </span>
             </div>
-            <SectionHeading title={title} />
+            <SectionHeading title={title} as="h1" />
           </div>
         </Container>
       </Section>

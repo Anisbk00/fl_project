@@ -85,20 +85,20 @@ describe("serializeCatalogParams (canonical)", () => {
   });
 
   it("produces a stable, sorted, default-stripped string", () => {
-    const params = { ...baseParams, q: "drift", types: ["stems", "techno"], page: 2, sort: "price_asc" };
+    const params: CatalogParams = { ...baseParams, q: "drift", types: ["stems", "project_file"], page: 2, sort: "price_asc" };
     const out = serializeCatalogParams(params);
     // Sorted keys, no page=1 default dropped (page=2 kept), sort kept.
     expect(out.startsWith("?")).toBe(true);
     expect(out).toContain("q=drift");
     expect(out).toContain("type=stems");
-    expect(out).toContain("type=techno");
+    expect(out).toContain("type=project_file");
     expect(out).toContain("page=2");
     expect(out).toContain("sort=price_asc");
   });
 
   it("round-trips parse(serialize(parse(x)))", () => {
     const original = parseCatalogParams({
-      q: "vector", type: ["stems"], genre: ["techno"], sort: "title", page: "2",
+      q: "vector", type: ["stems"], genre: ["techno"], sort: "title" as const, page: "2",
     }).params!;
     const serialized = serializeCatalogParams(original);
     const reparsed = parseCatalogParams(
@@ -115,12 +115,12 @@ describe("serializeCatalogParams (canonical)", () => {
 describe("withParam / withPage", () => {
   it("resets page to 1 when a filter changes", () => {
     const params = { ...baseParams, page: 5, q: "drift" };
-    const href = withParam(params, { types: ["stems"], resetPage: true });
+    const href = withParam(params, { types: ["stems" as const], resetPage: true });
     expect(href).not.toContain("page=");
   });
 
   it("keeps filters + sort when changing page", () => {
-    const params = { ...baseParams, q: "drift", sort: "title", page: 1 };
+    const params: CatalogParams = { ...baseParams, q: "drift", sort: "title", page: 1 };
     const href = withPage(params, 3);
     expect(href).toContain("q=drift");
     expect(href).toContain("sort=title");

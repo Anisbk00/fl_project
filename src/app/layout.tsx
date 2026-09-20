@@ -2,9 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-import { SkipLink } from "@/components/site/skip-link";
-import { SiteHeader } from "@/components/site/site-header";
-import { SiteFooter } from "@/components/site/site-footer";
 import { publicEnv } from "@/lib/env/public";
 import { siteConfig } from "@/lib/site-config";
 
@@ -49,6 +46,12 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Minimal root layout. The storefront chrome (skip link, header, footer) lives
+ * in `src/app/(store)/layout.tsx`; the admin chrome lives in
+ * `src/app/admin/layout.tsx`. This keeps the two surfaces visually independent
+ * (the admin area does NOT render the public storefront header/footer).
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -59,18 +62,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-canvas text-ink antialiased`}
       >
-        <div className="flex min-h-[100dvh] flex-col">
-          <SkipLink />
-          <SiteHeader />
-          <main
-            id="main-content"
-            tabIndex={-1}
-            className="flex-1 focus:outline-none"
-          >
-            {children}
-          </main>
-          <SiteFooter />
-        </div>
+        {children}
         <Toaster />
       </body>
     </html>
