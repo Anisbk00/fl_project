@@ -162,6 +162,10 @@ data, checkout, and delivery arrive in later steps):
   media boundary, preview types, loading policy, player behavior, encoding, a11y.
 - [`docs/SEO.md`](./docs/SEO.md) — Step 3 canonical/indexing, metadata,
   sitemap/robots, JSON-LD truthfulness/escaping, validation, no-fake-ratings rule.
+- [`docs/FULFILLMENT.md`](./docs/FULFILLMENT.md) — Step 6 paid-to-fulfillment transition, entitlement state, outbox worker, recovery, refunds/disputes.
+- [`docs/DOWNLOAD_SECURITY.md`](./docs/DOWNLOAD_SECURITY.md) — Step 6 token crypto, fragment exchange, private Storage, signed-URL TTL/quota, headers/CSP.
+- [`docs/EMAIL_DELIVERY.md`](./docs/EMAIL_DELIVERY.md) — Step 6 Resend adapter, immutable payload, webhooks, bounce/suppression, latency, DNS.
+- [`docs/RECOVERY.md`](./docs/RECOVERY.md) — Step 6 guest order-number/email recovery, token reuse/rotation, admin email correction.
 - [`docs/DECISIONS.md`](./docs/DECISIONS.md) — decision record (hosted Stripe
   Checkout, guest checkout, private Supabase delivery storage, webhook-authoritative
   fulfillment).
