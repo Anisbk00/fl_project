@@ -1,0 +1,1248 @@
+STEP 7 — TRUST, LEGAL PAGES, REVIEWS, AND GROWTH FEATURES
+
+You are a senior full-stack, application-security, privacy, consumer-commerce, and product engineer. Implement Step 7 only in the existing production-grade digital music-product store.
+
+Read the complete repository, project instructions, migrations, generated types, tests, architecture decisions, and Steps 1–6 documentation before changing anything. Preserve all working behavior. Do not invent credentials, business facts, legal conclusions, customer activity, reviews, discounts, or external resources. Never claim that a test or legal review occurred unless it actually did.
+
+CURRENT ARCHITECTURE
+
+The application uses:
+
+- Next.js App Router with strict TypeScript;
+- Supabase Postgres, Auth, and Storage;
+- Stripe-hosted one-time guest Checkout;
+- Resend behind a provider-neutral transactional-email interface;
+- Vercel deployment;
+- manually provisioned administrators protected by TOTP MFA/AAL2;
+- no buyer accounts, login, profile, or customer library;
+- private deliverables separated from public audio previews;
+- Stripe webhooks as the only payment authority;
+- durable email and fulfillment outbox processing;
+- immutable purchased-product and deliverable snapshots;
+- secure fragment-based package-access links;
+- private Supabase Storage with short-lived signed URLs.
+
+Step 6 already grants immutable entitlements and queues a secure package-access email automatically after webhook-confirmed payment, normally reaching the email provider in under 60 seconds. Preserve and regression-test that entire flow.
+
+This step adds trustworthy public information and carefully bounded growth features. It does not authorize live charging, production deployment, behavioral advertising, bulk marketing campaigns, buyer accounts, loyalty programs, subscriptions, marketplace sellers, or AI-generated reviews.
+
+Steps 8 and 9 must remain pending.
+
+NON-NEGOTIABLE PRINCIPLES
+
+1. Treat legal text as jurisdiction-dependent content requiring qualified human review. Build the versioning, publishing, evidence, and release-gate system, but never invent final legal wording or claim legal compliance.
+
+2. Preserve immutable order, consent, price, license, bundle, promotion, deliverable, and policy evidence. New policy revisions must never rewrite evidence attached to previous checkouts or orders.
+
+3. Never create fake reviews, ratings, testimonials, customer counters, urgency, scarcity, countdowns, “recent purchase” popups, crossed-out prices, savings claims, bestseller claims, security badges, or compatibility claims.
+
+4. Marketing consent must be separate, optional, specific, unchecked, and never required to purchase or receive a free product.
+
+5. Transactional fulfillment email must never depend on marketing consent.
+
+6. Do not introduce non-essential cookies or trackers in this step. Do not show a fake cookie banner when the site only uses strictly necessary storage.
+
+7. All prices and discounts use integer minor units and explicit supported currencies. The browser must never control prices, discounts, eligibility, bundle contents, consent versions, review verification, or recommendation results.
+
+8. Every public mutation must be schema validated, size bounded, abuse controlled, durably rate limited, non-enumerating, and protected against CSRF or cross-origin misuse where applicable.
+
+9. Public catalog caching and performance must remain intact. Personalized or capability-bound information must never enter shared caches.
+
+10. Keep live Stripe charging and production launch fail-closed. Missing legal review, merchant details, market rules, promotion reconciliation, or security evidence remains a release blocker.
+
+IMPLEMENTATION ORDER
+
+First audit the existing implementation and write a short Step 7 gap analysis.
+
+Map the Step 5 checkout-consent and order-snapshot architecture and the Step 6 fulfillment, outbox, entitlement, and secure-access architecture before designing migrations.
+
+Reuse existing:
+
+- server-only boundaries;
+- typed repositories;
+- transaction patterns;
+- state machines;
+- audit logs;
+- clocks and ID factories;
+- validation conventions;
+- test helpers;
+- email-provider abstractions;
+- rate-limiting infrastructure.
+
+If an earlier-step defect blocks safe Step 7 implementation, fix it narrowly, document it, and add a regression test. Do not refactor unrelated working code.
+
+1. VERSIONED LEGAL AND TRUST CONTENT
+
+Implement a database-backed, locale-aware policy and trust-content registry covering at least:
+
+- legal notice and merchant identity;
+- terms of sale and use;
+- privacy notice;
+- cookie and browser-storage notice;
+- refund, cancellation, digital-content withdrawal, and defective-content information;
+- end-user and product license terms;
+- copyright and takedown process;
+- compatibility and system-requirement guidance;
+- support and contact information;
+- review policy;
+- promotion and pricing-transparency policy;
+- accessibility and support statement where applicable.
+
+Use immutable published revisions rather than mutable content blobs.
+
+Model:
+
+- stable document key;
+- immutable revision ID;
+- locale;
+- market or jurisdiction scope;
+- semantic or monotonic version;
+- safe Markdown source;
+- rendered-content hash;
+- status such as `draft`, `in_review`, `published`, and `superseded`;
+- effective start time;
+- publishing administrator;
+- human-review metadata;
+- creation, review, publication, and supersession timestamps.
+
+Requirements:
+
+- Published revisions cannot be edited or deleted.
+- Corrections create new revisions.
+- Only one revision per document, locale, and applicable market scope may be effective at once.
+- Constraints and transactional publication must prevent ambiguous active versions.
+- Do not permit arbitrary HTML, scripts, iframes, event handlers, embedded forms, tracking pixels, or unsafe URLs.
+- Render an allowlisted Markdown subset with sanitization.
+- Support accessible landmarks, stable headings, print styles, readable line lengths, effective dates, last-updated information, and canonical metadata.
+- Legal pages must remain usable without client-side JavaScript.
+- External links must permit only safe protocols and use appropriate `rel` attributes.
+
+Connect Step 5 checkout consent to exact legal revisions.
+
+At checkout creation:
+
+- resolve applicable policy revisions server-side;
+- use configured market and locale rules;
+- do not trust revision IDs supplied by the browser;
+- snapshot the exact revision IDs, hashes, locale, and consent wording;
+- preserve that evidence permanently with the checkout attempt and resulting order.
+
+Immediate digital-supply consent and acknowledgment about withdrawal rights must be:
+
+- separate from marketing consent;
+- conspicuous before payment;
+- localized;
+- versioned;
+- timestamped;
+- included in immutable order evidence;
+- legally reviewed before live charging.
+
+Do not invent final consent language.
+
+Create an AAL2 administrator workflow to:
+
+- create drafts;
+- preview rendered documents;
+- compare revisions;
+- request legal review;
+- record review details;
+- publish immediately or schedule publication;
+- supersede an existing revision;
+- inspect release blockers.
+
+Require a reason for material changes and append audit events.
+
+Publishing must fail when:
+
+- required merchant placeholders remain;
+- required documents or locales are missing;
+- unsafe or invalid links exist;
+- review metadata is missing;
+- market configuration is incomplete;
+- the revision has not been approved by an authorized human.
+
+Administrators must never be able to modify historical order-policy snapshots.
+
+Create a production legal-release gate with structured configuration for:
+
+- merchant legal name;
+- trading name;
+- physical or postal address where required;
+- business registration number;
+- VAT or tax identifiers where applicable;
+- support and legal contact channels;
+- establishment country;
+- supported customer markets;
+- governing-law and dispute-resolution wording;
+- privacy-controller identity;
+- retention decisions;
+- legal-review sign-off.
+
+Unknown values must remain explicit blockers such as `REQUIRES_HUMAN_INPUT`. Never generate plausible placeholder business information.
+
+Implement configurable market availability with explicit allow and deny rules and documented precedence.
+
+Apply market rules consistently to:
+
+- product availability;
+- catalog visibility where necessary;
+- cart validation;
+- checkout;
+- free acquisitions;
+- bundles;
+- promotions;
+- fulfillment recovery.
+
+If the actual operating jurisdiction or market rules are unknown, production selling must remain disabled.
+
+2. PRIVACY, COOKIES, RETENTION, AND USER CHOICES
+
+Inventory every cookie and browser-storage key currently used, including:
+
+- guest cart;
+- admin authentication;
+- MFA state;
+- secure download session;
+- locale or accessibility preferences;
+- any other storage actually present.
+
+For every item document:
+
+- name;
+- purpose;
+- owner;
+- scope;
+- lifetime;
+- data category;
+- `Secure`, `HttpOnly`, and `SameSite` behavior;
+- whether it is strictly necessary.
+
+Publish this inventory through the cookie/storage notice and keep its source reviewable.
+
+At the end of Step 7:
+
+- no advertising trackers may run;
+- no social tracking pixels may run;
+- no fingerprinting may occur;
+- no cross-site behavioral tracking may occur;
+- no heatmaps or session recording may run;
+- no optional analytics storage may be written.
+
+If the repository already includes optional tracking, disable and remove it from public execution unless a valid reviewed prior-consent mechanism already exists.
+
+Do not show a decorative cookie banner when only necessary storage is used.
+
+A future preference center may be scaffolded only when it truthfully represents active categories and defaults all non-essential categories to disabled.
+
+Document actual or unresolved decisions for:
+
+- processing purposes;
+- lawful basis;
+- processors and recipients;
+- international transfers;
+- retention and deletion;
+- order and tax records;
+- fraud and dispute evidence;
+- transactional email;
+- reviews and moderation;
+- marketing consent;
+- security logs.
+
+Implement automatic retention jobs only when backed by an approved policy. Otherwise, leave the decision as an explicit release blocker.
+
+Marketing withdrawal must not delete legally required payment, tax, fraud, dispute, or security evidence.
+
+Add a documented, non-enumerating privacy-request and contact route using the existing support boundary.
+
+It must:
+
+- collect only necessary information;
+- never reveal whether an email address has orders;
+- avoid automatically exporting or deleting identity-sensitive records;
+- route requests to verified human handling;
+- avoid creating a customer account or profile.
+
+3. VERIFIED-PURCHASE REVIEWS
+
+Implement first-party product reviews without buyer accounts.
+
+A review-submission capability may originate only from an active Step 6 secure order-access session for a paid, eligible, non-refunded, and non-revoked order item.
+
+Bind the review server-side to:
+
+- exact order item;
+- exact purchased product;
+- exact product snapshot where appropriate;
+- payment and entitlement eligibility.
+
+A free acquisition, imported review, admin entry, development fixture, or email-only identity must never receive a verified-purchase badge.
+
+Enforce one logical review per eligible order item under concurrency.
+
+Permit:
+
+- integer rating from 1 through 5;
+- bounded plain-text review body;
+- optional bounded public display name.
+
+Normalize and validate Unicode.
+
+Reject:
+
+- control characters;
+- unsafe markup;
+- scripts;
+- abusive payload sizes;
+- prohibited URLs;
+- obvious secret or personal-information leakage where practical.
+
+Render review content as escaped plain text, never arbitrary HTML or Markdown.
+
+Add:
+
+- durable per-capability limits;
+- durable abuse and IP-risk limits;
+- same-origin and CSRF protection;
+- replay protection;
+- spam heuristics;
+- safe generic errors.
+
+Hash, truncate, or otherwise minimize network identifiers according to the approved retention policy. Do not create tracking profiles.
+
+Use explicit review states such as:
+
+- `pending`;
+- `published`;
+- `rejected`;
+- `withdrawn_by_author`;
+- `hidden_for_safety`;
+- `ineligible`.
+
+Store append-only moderation events.
+
+AAL2 administrators may:
+
+- publish;
+- reject;
+- hide;
+- request resubmission;
+- apply a legally necessary redaction.
+
+Administrators must provide a reason and cannot silently rewrite the customer’s rating or text.
+
+When redaction is legally or operationally necessary:
+
+- preserve the original privately;
+- store the displayed revision separately;
+- append the redaction reason and event;
+- never present the modified text as an untouched submission.
+
+Provide a transparent public review policy explaining:
+
+- the verified-purchase badge;
+- moderation rules;
+- sorting;
+- displayed dates;
+- refund and dispute handling;
+- reporting and takedown routes.
+
+Do not selectively suppress negative reviews because of their rating.
+
+Provide accessible empty, pending, rejected, withdrawn, and reported states.
+
+Never expose:
+
+- order number;
+- buyer email;
+- private product or deliverable data;
+- IP information;
+- moderator identity;
+- secure access capability.
+
+Define deterministic refund and dispute behavior.
+
+A full refund, mapped item refund, lost chargeback, fraudulent order, or revoked entitlement must make the corresponding review ineligible for verified aggregate calculations according to the published policy.
+
+Preserve the review and audit history instead of silently deleting evidence.
+
+Ambiguous partial refunds must enter a review or hold state rather than guessing.
+
+Stale payment events must never restore review eligibility over a newer hold or revocation.
+
+Compute public rating aggregates only from eligible, published, genuine reviews.
+
+Make aggregation:
+
+- deterministic;
+- concurrency-safe;
+- reconstructable;
+- covered by database tests.
+
+Never seed production with reviews. Development fixtures must be clearly marked and excluded from production builds and structured data.
+
+Emit `Review` and `AggregateRating` structured data only when it reflects visible, eligible, genuine first-party reviews and complies with current Google requirements.
+
+Omit unsupported properties instead of fabricating data.
+
+4. SECURE FREE-PRODUCT ACQUISITION
+
+Implement free products using a separate acquisition path.
+
+Do not use:
+
+- zero-value Stripe Checkout;
+- fake paid orders;
+- fake Stripe identifiers;
+- 100% discounts;
+- public Storage objects;
+- permanent download URLs.
+
+Before creating an acquisition, the server must confirm that the product is:
+
+- published;
+- rights-cleared;
+- available in the customer’s allowed market;
+- currently free under an active server-owned price version;
+- backed by a ready immutable private deliverable;
+- distributable under the snapshotted license.
+
+Create explicit free-acquisition and immutable item-snapshot records distinct from paid orders.
+
+In one transaction:
+
+- create or idempotently reuse the acquisition;
+- snapshot the product, license, and exact deliverable version;
+- create the entitlement;
+- generate initial access capability material according to Step 6;
+- create the transactional email message;
+- enqueue durable outbox work.
+
+Reuse Step 6:
+
+- email-provider boundary;
+- fragment-token exchange;
+- one-time access exchange;
+- short HttpOnly secure access session;
+- private Storage authorization;
+- short-lived signed URLs;
+- signed-URL issuance quotas;
+- retries and reconciliation;
+- recovery and resend controls;
+- revocation behavior;
+- redaction and logging protections.
+
+Never attach the product package to email.
+
+Never expose permanent or public download URLs.
+
+The free-product form may collect an email because delivery occurs through email, but it must not claim the email uniquely identifies a person.
+
+Return generic responses that do not reveal:
+
+- existing orders;
+- earlier free claims;
+- email suppression;
+- entitlement state;
+- whether an address exists.
+
+Create a documented product/email idempotency and cooldown policy that reduces duplicates without falsely promising reliable per-person limits.
+
+Use durable abuse controls and explicit retention.
+
+Development and preview environments may email only safe or allowlisted test recipients.
+
+Target normal provider acceptance within 60 seconds of the committed eligible acquisition, while measuring inbox delivery separately.
+
+Do not guarantee inbox delivery.
+
+Paid webhook-confirmed fulfillment must have priority over free claims. Add queue isolation, fairness, back-pressure, or priority behavior and prove through tests that free-claim floods cannot starve paid-package emails.
+
+5. OPTIONAL MARKETING CONSENT
+
+Place optional marketing consent separately from free-product delivery and checkout.
+
+The checkbox must be:
+
+- unchecked by default;
+- optional;
+- purpose specific;
+- versioned;
+- localized;
+- unrelated to delivery eligibility.
+
+Capture:
+
+- consent-text revision;
+- purpose;
+- source form;
+- locale;
+- timestamp;
+- minimal evidence.
+
+Keep consent evidence separate from entitlements and transactional messages.
+
+Implement conservative double opt-in as store policy:
+
+- create `pending` consent;
+- send a separate confirmation email;
+- use a single-use, expiring confirmation capability;
+- mark marketing eligibility confirmed only after explicit activation;
+- allow withdrawal as easily as consent was given.
+
+Transactional package delivery must proceed whether or not marketing confirmation occurs.
+
+Implement a secure one-click unsubscribe or preference capability that:
+
+- requires no account;
+- contains no email address in the URL;
+- does not reveal subscription state;
+- uses random capability material;
+- stores only keyed digests where possible;
+- returns a generic confirmation.
+
+Store append-only consent events and derive the current status from states such as:
+
+- `pending`;
+- `confirmed`;
+- `withdrawn`;
+- `suppressed`.
+
+A later confirmation must never override a newer withdrawal, provider complaint, or suppression.
+
+Do not implement newsletters, campaigns, bulk email automation, or marketing-audience synchronization in this step.
+
+6. FIRST-CLASS BUNDLES
+
+Add a `bundle` catalog or product type with immutable, versioned component sets.
+
+A bundle version must contain:
+
+- ordered component product/version references;
+- quantities where meaningful;
+- reviewed bundle copy;
+- artwork;
+- license presentation;
+- compatibility information;
+- explicit server-owned price version.
+
+Prevent:
+
+- cycles;
+- self-reference;
+- unintended duplicate components;
+- unpublished components;
+- rights-blocked components;
+- market-unavailable components;
+- unready deliverables;
+- incompatible licenses;
+- invalid archived components.
+
+At checkout creation, snapshot:
+
+- exact bundle version;
+- exact component set;
+- licenses;
+- deliverable versions;
+- compatibility facts;
+- individual reference prices when displayed;
+- bundle price.
+
+After confirmed payment, grant idempotent entitlements to the exact purchased component deliverables.
+
+Only use a generated immutable bundle package if the existing architecture explicitly supports and verifies it safely.
+
+Later component or bundle edits must never change the buyer’s purchased contents.
+
+Refund, dispute, and revocation rules must map deterministically to the bundle and its component entitlements.
+
+Define cart-overlap behavior.
+
+Reject or clearly deduplicate a cart containing both a bundle and one of its included individual products. Never silently charge twice.
+
+Do not implement:
+
+- customer-built bundles;
+- arbitrary customer-selected packaging;
+- subscriptions;
+- marketplace bundles;
+- unbounded dynamic ZIP generation.
+
+7. PROMOTIONS AND PRICE TRANSPARENCY
+
+Create immutable price history for every product and bundle using:
+
+- integer minor units;
+- explicit currency;
+- validity interval;
+- normal or promotional price type;
+- reason and source;
+- publishing administrator;
+- audit timestamps.
+
+Prevent overlapping active price intervals for the same sellable and currency.
+
+The server must always resolve the effective price.
+
+Support scheduled sale-price revisions.
+
+If safely compatible with the existing Stripe integration, support one application-entered whole-cart promotion code per cart.
+
+Default to no stacking.
+
+Promotion definitions and immutable revisions should include:
+
+- normalized private code lookup or digest;
+- public label;
+- currency and market scope;
+- start and end times;
+- lifecycle state;
+- minimum subtotal;
+- eligible products or bundles;
+- discount type and value;
+- optional maximum discount;
+- total usage limit;
+- defensible per-email or per-order rules.
+
+Never expose promotion-management details, raw private codes, or redemption internals through public DTOs or logs.
+
+Validate promotion eligibility and calculate discounts server-side under concurrency.
+
+For limited promotions:
+
+- reserve redemption during Checkout Session creation;
+- consume only after the authoritative paid transition;
+- release after final failure or expiration;
+- reconcile abandoned and delayed Checkout sessions;
+- make all transitions idempotent.
+
+Duplicate sessions, delayed payment methods, webhook replay, concurrent final redemptions, expiration, and refunds must not corrupt counters.
+
+Do not claim strong per-person limits without buyer accounts. Clearly describe actual email or order-based limits.
+
+If the application owns promotion entry, keep Stripe’s generic `allow_promotion_codes` disabled.
+
+If Stripe requires a Coupon or discount representation:
+
+- create or synchronize the exact immutable Stripe object idempotently;
+- store its server-side identifier;
+- constrain application features to what Stripe Checkout can safely represent;
+- never accept browser-created Stripe coupons;
+- never mutate immutable discount meaning;
+- never hide application and Stripe total divergence.
+
+Webhook processing must reconcile:
+
+- currency;
+- subtotal;
+- sale-price revisions;
+- promotion;
+- discount allocation;
+- tax;
+- final total.
+
+Any mismatch must place the order on hold and prevent fulfillment.
+
+Store immutable checkout and order snapshots for:
+
+- list subtotal;
+- effective item prices;
+- sale revisions;
+- promotion ID and revision;
+- discount allocation;
+- tax;
+- final total.
+
+Never allow discounts to create negative totals or turn a paid Checkout product into a free product. Use the free-acquisition flow instead.
+
+For public price-reduction claims, compute the reference price from real price history under configured jurisdiction rules.
+
+Support an EU-style lowest-price-within-the-previous-30-days rule as configurable reviewed logic where applicable, including:
+
+- products sold for fewer than 30 days;
+- progressive reductions;
+- market scope;
+- currency scope.
+
+Do not display “was,” percentage savings, or similar claims until the applicable legal rule and price history are valid.
+
+Unresolved price-transparency requirements must remain a release blocker.
+
+8. PRIVACY-PRESERVING RECOMMENDATIONS
+
+Implement deterministic, explainable recommendations using public catalog facts such as:
+
+- product type;
+- genre;
+- DAW and version;
+- plugins;
+- BPM;
+- key;
+- difficulty;
+- tags;
+- compatibility;
+- bundle relationships;
+- audited manually curated related products.
+
+Optional aggregate co-purchase signals may be used only when they genuinely exist, have been privacy reviewed, and are suppressed below a documented k-anonymity threshold.
+
+Never expose small-cohort purchase counts.
+
+Do not introduce:
+
+- third-party behavioral tracking;
+- fingerprinting;
+- cross-site identity;
+- sensitive inference;
+- email-based recommendations;
+- persistent buyer profiles.
+
+A secure access page may exclude products already included in that exact capability-bound purchase without creating a buyer profile.
+
+Recommendations must exclude:
+
+- current product;
+- drafts;
+- rights-blocked products;
+- unavailable markets;
+- archived products;
+- unready deliverables;
+- incompatible products;
+- duplicates.
+
+Curated recommendation pins require:
+
+- AAL2 administrator;
+- reason;
+- optional validity dates;
+- audit history.
+
+Curated pins cannot bypass publication, rights, readiness, or market gates.
+
+Keep recommendation queries:
+
+- bounded;
+- indexed;
+- deterministic;
+- cacheable when public;
+- stable for a catalog revision.
+
+Provide truthful explanations such as “Related by genre and DAW” where useful.
+
+Recommendations must never obstruct checkout, mimic required choices, or use manipulative ranking.
+
+9. TRUSTWORTHY STOREFRONT UX
+
+Add consistent trust information to:
+
+- product pages;
+- cart;
+- Checkout handoff;
+- free-product forms;
+- secure access portal;
+- footer;
+- contact surfaces.
+
+Accurately explain:
+
+- included files;
+- applicable license;
+- DAW, version, and plugin requirements;
+- known compatibility limitations;
+- that payment occurs on Stripe-hosted Checkout;
+- that access email is sent after confirmed payment;
+- that normal provider acceptance is targeted within 60 seconds;
+- that delayed payment methods and inbox delivery may take longer;
+- that secure access and signed download URLs expire;
+- issuance or download limits;
+- refund and remedy policies;
+- bundle contents and pricing basis;
+- what “verified purchase” means;
+- transactional versus optional marketing email.
+
+Do not display unsupported:
+
+- trust badges;
+- encryption certifications;
+- customer counts;
+- delivery guarantees;
+- refund guarantees;
+- compatibility claims;
+- legal-clearance claims;
+- response-time promises.
+
+Do not copy competitor wording, branding, or design.
+
+Use:
+
+- accessible form labels;
+- error summaries;
+- focus management;
+- status announcements;
+- keyboard operation;
+- reduced-motion support;
+- adequate contrast;
+- responsive layouts;
+- plain language.
+
+Contact and copyright/takedown forms must minimize collected data, reject unsafe attachments unless securely designed, return generic acknowledgments, and feed a documented human workflow.
+
+10. DATABASE SECURITY AND SERVER BOUNDARIES
+
+Create forward-only migrations, constraints, indexes, database comments, generated Supabase types, and pgTAP coverage for:
+
+- legal documents and revisions;
+- market rules;
+- reviews;
+- review moderation events;
+- free acquisitions;
+- marketing-consent events;
+- bundles and component versions;
+- price history;
+- promotions;
+- redemption reservations;
+- curated recommendations.
+
+Prefer database constraints for invariants and transaction-safe functions for multi-row state changes.
+
+Anonymous and public roles may access only approved public projections or narrowly scoped RPCs.
+
+Every `security definer` function must have:
+
+- pinned safe `search_path`;
+- explicit authorization;
+- validation;
+- revoked default privileges;
+- least-privilege execution grants.
+
+Anonymous users must never directly access:
+
+- buyer emails;
+- order items;
+- legal drafts;
+- consent evidence;
+- secure capabilities;
+- moderation data;
+- promotion secrets;
+- audit logs;
+- private deliverables;
+- recommendation internals.
+
+Administrative mutations require active allowlisting and AAL2.
+
+Review every new table, function, and view for:
+
+- RLS;
+- grants;
+- ownership;
+- search-path safety;
+- row-count leakage;
+- enumeration behavior;
+- timing leakage;
+- service-role use.
+
+Keep provider clients, service credentials, cryptography, and private repositories server-only.
+
+Add client/server import-boundary tests and inspect the production client bundle.
+
+Do not log:
+
+- raw form bodies;
+- emails;
+- review capabilities;
+- consent tokens;
+- unsubscribe tokens;
+- promotion codes;
+- Stripe or Resend payloads;
+- private Storage paths.
+
+11. ADMIN OPERATIONS
+
+Extend the existing AAL2 admin area with least-privilege sections for:
+
+- legal/trust drafting and publication;
+- revision comparison;
+- legal-review blockers;
+- supported-market configuration;
+- review moderation and reports;
+- review aggregate diagnostics;
+- free-acquisition and outbox diagnostics;
+- marketing-consent events;
+- bundle validation and publication;
+- price history and scheduled sales;
+- promotions and redemption reconciliation;
+- curated recommendation pins.
+
+Use safe pagination and indexed filters.
+
+Require confirmations and reasons for consequential actions.
+
+Show redacted operational facts instead of secrets.
+
+Administrators must never be able to:
+
+- mark a payment as paid;
+- fabricate a verified purchase;
+- silently edit a customer review;
+- rewrite historical policy snapshots;
+- rewrite order or price evidence;
+- reveal raw access or consent tokens;
+- bypass rights, market, or release gates.
+
+Every privileged mutation must append:
+
+- actor;
+- action;
+- target;
+- reason;
+- safe before-and-after metadata;
+- correlation identifier;
+- timestamp.
+
+12. TESTS AND EVIDENCE
+
+Add deterministic unit, integration, pgTAP, component, and E2E coverage for:
+
+Legal content:
+
+- revision immutability;
+- one-effective-version constraints;
+- Markdown sanitization;
+- unsafe URL rejection;
+- locale and market resolution;
+- Checkout snapshot binding;
+- placeholder and review release gates;
+- admin AAL2.
+
+Privacy:
+
+- cookie/storage inventory accuracy;
+- absence of optional trackers;
+- absence of optional storage before consent;
+- non-enumerating privacy requests.
+
+Reviews:
+
+- paid-item eligibility;
+- one-review-per-item concurrency;
+- XSS and Unicode handling;
+- size validation;
+- CSRF;
+- replay protection;
+- rate limits;
+- moderation immutability;
+- negative-review neutrality;
+- refund and dispute races;
+- aggregate correctness;
+- public non-enumeration.
+
+Free acquisition:
+
+- server-side product eligibility;
+- idempotency;
+- immutable deliverable snapshot;
+- entitlement and outbox atomicity;
+- worker retry behavior;
+- generic responses;
+- abuse limits;
+- paid-email priority;
+- normal under-60-second provider-acceptance measurement;
+- fragment access;
+- secure signed downloads.
+
+Marketing consent:
+
+- separate optional consent;
+- unchecked defaults;
+- double-opt-in capability single use;
+- expiry;
+- concurrency;
+- withdrawal;
+- suppression and complaint precedence;
+- no effect on transactional delivery.
+
+Bundles:
+
+- cycles;
+- duplicates;
+- component readiness;
+- rights and license validation;
+- immutable component snapshots;
+- cart overlap;
+- exact entitlement mapping;
+- refunds and disputes;
+- protection from later component edits.
+
+Pricing and promotions:
+
+- price interval constraints;
+- scheduled transitions;
+- prior and lowest-price calculations;
+- promotion eligibility;
+- no stacking;
+- code secrecy;
+- reservation concurrency;
+- consume and release reconciliation;
+- delayed payment;
+- webhook replay;
+- total reconciliation;
+- minimum amount boundaries;
+- prevention of accidental free Checkout.
+
+Recommendations:
+
+- eligibility;
+- deterministic ranking;
+- small-cohort suppression;
+- admin pin audit;
+- cache isolation;
+- query plans;
+- absence of identity tracking.
+
+Regression:
+
+- all Steps 1–6 tests;
+- payment webhook authority;
+- delayed payment;
+- refund behavior;
+- paid entitlement atomicity;
+- instant post-payment package email;
+- fragment-token exchange;
+- private Storage access;
+- signed-URL issuance quotas;
+- recovery and resend.
+
+Use a controllable clock for:
+
+- policy activation;
+- consent expiration;
+- sale boundaries;
+- promotion boundaries;
+- reservation expiration;
+- capability expiration.
+
+Include simultaneous transaction and stale/out-of-order event tests.
+
+Inspect representative `EXPLAIN (ANALYZE, BUFFERS)` plans for:
+
+- public policy resolution;
+- review aggregation;
+- bundle expansion;
+- active price resolution;
+- promotion reservation;
+- recommendations.
+
+Avoid N+1 queries and unbounded scans.
+
+Run:
+
+- formatting;
+- lint;
+- strict TypeScript checking;
+- Supabase reset;
+- all migrations;
+- seed;
+- generated-type drift checks;
+- pgTAP/RLS/grant/function tests;
+- unit and integration tests;
+- E2E tests;
+- accessibility checks;
+- SEO and structured-data checks;
+- production build;
+- dependency scan;
+- secret scan;
+- client-bundle inspection.
+
+Report exact commands and honest results.
+
+If an external account, legal decision, inbox, DNS configuration, hosted Supabase environment, Stripe scenario, or Vercel scheduler is unavailable, run all unaffected tests and report:
+
+- missing evidence;
+- required action;
+- reason;
+- exact release consequence.
+
+Mocks do not count as live provider or legal verification.
+
+13. DOCUMENTATION
+
+Create or update:
+
+- `LEGAL_CONTENT_AND_RELEASE_GATE.md`;
+- `PRIVACY_COOKIES_AND_RETENTION.md`;
+- `DIGITAL_CONTENT_CONSENT.md`;
+- `REVIEWS_AND_MODERATION.md`;
+- `FREE_ACQUISITION.md`;
+- `MARKETING_CONSENT.md`;
+- `BUNDLES_AND_PROMOTIONS.md`;
+- `RECOMMENDATIONS.md`;
+- `TRUST_CONTENT.md`;
+- operational and reconciliation runbooks;
+- main architecture and roadmap documentation.
+
+Document:
+
+- actual database tables;
+- functions;
+- state machines;
+- security boundaries;
+- threats;
+- operator actions;
+- retention assumptions;
+- failure modes;
+- reconciliation;
+- monitoring hooks;
+- remaining blockers.
+
+Do not include secrets, personal data, access tokens, private paths, or signed URLs in documentation or test evidence.
+
+REQUIRED COMPLETION CHECKS
+
+Run and report the repository’s exact commands for:
+
+- formatting, lint, and strict type checking;
+- Supabase reset, migrations, seed, generated types, pgTAP, RLS, grants, and function tests;
+- policy publication, sanitization, snapshots, and market gates;
+- reviews, moderation, aggregates, refund behavior, concurrency, and security;
+- free acquisition, email outbox, access, and paid-priority regression;
+- marketing double opt-in, withdrawal, and suppression;
+- bundles, price history, promotions, redemption, and reconciliation;
+- recommendation privacy, ranking, queries, and caching;
+- storefront, catalog, admin, cart, Stripe, refund, fulfillment, Resend, and secure-access regression;
+- structured-data validation;
+- accessibility and responsive E2E checks;
+- production build;
+- secret and dependency scans;
+- client/server boundary and client-bundle inspection.
+
+Redact:
+
+- buyer emails;
+- consent evidence;
+- IP-derived data;
+- review capabilities;
+- access/session tokens;
+- URL fragments;
+- promotion codes;
+- Stripe and Resend identifiers or payloads;
+- private object paths;
+- signed URLs;
+- secrets;
+- real merchant personal information.
+
+ACCEPTANCE CRITERIA
+
+Step 7 is complete only when:
+
+1. Steps 1–6 remain green, including rights-gated publishing, AAL2 admin, server-priced guest Checkout, authoritative Stripe webhooks, immutable orders, refunds, private fulfillment, and normal under-60-second payment-to-email-provider acceptance.
+
+2. Buyers still have no accounts, login, profiles, or libraries.
+
+3. Supabase Auth remains admin-only.
+
+4. Published legal and trust documents are immutable, sanitized, locale/market aware, human-review gated, and auditable.
+
+5. Checkout and orders preserve exact policy revision and content-hash evidence.
+
+6. Missing merchant, jurisdiction, market, privacy, tax, licensing, dispute, or legal-review information remains an explicit live-release blocker.
+
+7. No generated legal text is represented as approved legal advice.
+
+8. Immediate digital-supply and withdrawal evidence is conspicuous, separate from marketing, versioned, and immutable.
+
+9. Only necessary cookies or storage are active.
+
+10. Optional tracking remains absent or disabled before valid consent.
+
+11. Reviews can be submitted only through an eligible paid order-item capability.
+
+12. One order item can create at most one logical review under concurrency.
+
+13. Review content is safely escaped and bounded.
+
+14. Review moderation is append-only and neutral to rating.
+
+15. Administrators cannot silently rewrite reviews.
+
+16. Verified badges and aggregates use only genuine, eligible, published paid-purchase reviews.
+
+17. Refunds, disputes, and revocations correctly affect review eligibility.
+
+18. Structured review data matches visible genuine content.
+
+19. Free acquisition never creates fake Stripe payments or public deliverables.
+
+20. Free acquisition atomically creates immutable snapshots, entitlement, secure access, and transactional email outbox work.
+
+21. Free traffic cannot starve paid fulfillment.
+
+22. Marketing consent is optional, unchecked, separately versioned, double-confirmed, and withdrawable without an account.
+
+23. Transactional package delivery never depends on marketing consent.
+
+24. Bundles are acyclic, immutable, rights-cleared, market-valid, license-valid, and snapshotted at purchase.
+
+25. Bundle entitlements always reference exact purchased component deliverables.
+
+26. Cart overlap cannot silently double-charge buyers.
+
+27. Prices and scheduled sales are immutable, server-authoritative, integer-safe, currency-safe, and historically auditable.
+
+28. Promotions do not stack by default.
+
+29. Promotion eligibility and totals are server-authoritative.
+
+30. Promotion codes remain private.
+
+31. Limited redemption is concurrency-safe and idempotently reconciled.
+
+32. Stripe totals reconcile to frozen price, promotion, discount, tax, currency, and final-total evidence.
+
+33. Mismatched totals never fulfill.
+
+34. Reference-price and savings claims derive from real price history under reviewed market rules.
+
+35. Recommendations use public or sufficiently aggregated signals.
+
+36. Recommendations introduce no email-based profile, fingerprinting, or cross-site tracking.
+
+37. Trust content contains no fake urgency, scarcity, reviews, social proof, security badges, or delivery guarantees.
+
+38. New schema objects have least-privilege grants, RLS, function security, indexes, and regression tests.
+
+39. Public mutations are validated, abuse resistant, rate limited, and non-enumerating.
+
+40. Every consequential admin action requires an active allowlisted AAL2 administrator and is audited.
+
+41. Public pages remain accessible, responsive, SEO-correct, cache-safe, and within existing performance budgets.
+
+42. Production bundles, logs, errors, and documentation contain no secrets, personal data, raw capabilities, private paths, or server-only modules.
+
+43. No bulk campaigns, behavioral analytics, buyer accounts, subscriptions, marketplace features, live deployment, or live charging were added.
+
+44. Live Stripe charging remains disabled.
+
+45. Steps 8 and 9 remain pending.
+
+FINAL RESPONSE FORMAT
+
+When finished, provide:
+
+1. concise outcome and whether Step 7 is truly complete;
+2. earlier-step audit findings and narrow fixes;
+3. legal/trust revision architecture and unresolved human/legal blockers;
+4. privacy, cookie, retention, and request handling;
+5. review eligibility, moderation, aggregates, structured data, and refund/dispute behavior;
+6. free-acquisition transaction, email flow, access flow, priority behavior, and measured latency;
+7. marketing consent, double-opt-in, and unsubscribe state machine;
+8. bundle versioning, snapshots, entitlements, overlap, and refund behavior;
+9. price history, promotions, Stripe representation, redemption, reconciliation, and transparency;
+10. recommendation signals, privacy thresholds, ranking, caching, and query behavior;
+11. trust UX, accessibility, SEO, and performance evidence;
+12. migrations, constraints, indexes, RLS, grants, functions, audits, and important files;
+13. exact commands run with pass, fail, or not-run results;
+14. external and legal scenarios completed versus blocked;
+15. residual security, privacy, accessibility, performance, and legal risks;
+16. confirmation that buyer accounts, bulk marketing, optional analytics, deployment, and live charging remain unimplemented;
+17. recommended next prompt title: `Step 8 — Observability, security, performance, and accessibility hardening`.
+
+Stop after Step 7. Do not proceed to Step 8.

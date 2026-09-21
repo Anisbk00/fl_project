@@ -157,3 +157,19 @@ Stage Summary:
 - Step 6 architecture + verifiable crypto/fulfillment logic complete. Honest blockers: real token exchange, real signed-URL issuance, real Resend email delivery, real webhook processing, real outbox worker, and full E2E require a live Resend account + live Supabase Storage + a Vercel production plan (minute cron). No mock counted as a live pass.
 - No Step 7+ feature implemented (reviews, free-product funnel, bundles, analytics, legal finalization, production deployment all pending). The future invariant is preserved + implemented: the atomic `after_order_paid_extension` creates entitlements + a delivery message + an outbox job in the same transaction as the paid transition. After authoritative payment, the worker normally sends the secure expiring access email within 60 seconds, with no large attachment.
 - Recommended next prompt title: Step 7 — Trust, legal pages, reviews, and growth features.
+
+---
+Task ID: 8
+Agent: Z.ai Code (main)
+Task: Step 7 — Trust, legal pages, reviews, and growth features.
+
+Work Log:
+- Preflight: Steps 1-6 green. Confirmed no Docker/Supabase/Stripe/Resend → live verification blocked.
+- Pure-logic domain (49 new tests, all pass): legal-revisions.ts (revision state machine, one-effective-version, Markdown sanitization, market/locale resolution), review-domain.ts (eligibility, one-per-item, XSS/Unicode, state machine, aggregate), bundle-validation.ts (cycle detection, overlap dedup), price-history.ts (intervals, effective price, promotion eligibility, redemption state, lowest-price-30d), consent.ts (double opt-in, withdrawal precedence), ranking.ts (deterministic, k-anonymity), cookie-inventory.ts (strictly-necessary only).
+- SQL migration 0008_trust_and_growth.sql: legal_revisions, reviews + review_moderation_events, free_acquisitions, marketing_consent_events, bundle_versions, price_history, promotions + redemption_reservations, recommendation_pins; RLS (anon reads published reviews only; AAL2 admin read-only; price_history + pins public).
+- Docs: 9 new (LEGAL_CONTENT_AND_RELEASE_GATE, PRIVACY_COOKIES_AND_RETENTION, DIGITAL_CONTENT_CONSENT, REVIEWS_AND_MODERATION, FREE_ACQUISITION, MARKETING_CONSENT, BUNDLES_AND_PROMOTIONS, RECOMMENDATIONS, TRUST_CONTENT); ROADMAP (Step 7 COMPLETE).
+- Verified: lint ✓, typecheck ✓, 287 tests ✓.
+
+Stage Summary:
+- Step 7 architecture + verifiable pure-logic domain complete. Honest blockers: live data, admin CMS, E2E, pgTAP require a linked Supabase project. No mock counted as a live pass. Live charging remains fail-closed. No buyer accounts, bulk marketing, optional analytics, or deployment.
+- Recommended next prompt title: Step 8 — Observability, security, performance, and accessibility hardening.

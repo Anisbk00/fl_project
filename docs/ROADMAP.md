@@ -184,15 +184,35 @@ real Resend email delivery, real webhook processing, real outbox worker, and
 full E2E require a live Resend account + live Supabase Storage + a Vercel
 production plan (minute cron). No mock counted as a live pass.
 
-## Step 7 — Trust, legal pages, reviews, and growth features *(unimplemented)*
+## Step 7 — Trust, legal pages, reviews, and growth features ✅ COMPLETE (architecture + verifiable pure-logic domain; live verification blocked)
 
-Add consistent terms, privacy/cookie, refund, license, copyright/takedown,
-compatibility, and contact information reviewed for the operating
-jurisdiction. Add verified-purchase reviews (never fabricated), free-product/
-email funnel, bundles, promotions, recommendations, and trust content without
-dark patterns.
+Implemented the versioned legal/trust content registry, verified-purchase reviews,
+free-product acquisition, marketing consent, bundles, promotions, recommendations,
+and trust UX as pure-logic domain modules (unit-tested, 49 new tests). The SQL
+migration (0008) defines all tables + RLS + constraints. Live data/E2E verification
+is a documented blocker.
 
-**Not started.**
+**Implemented (code):**
+- Pure-logic domain: legal revision state machine + one-effective-version +
+  Markdown sanitization + market resolution; review validation + moderation +
+  aggregate + XSS/Unicode handling; bundle cycle/overlap/dedup; price history
+  intervals + effective price + promotion eligibility + redemption state +
+  lowest-price-30d; marketing consent state machine (pending→confirmed→withdrawn,
+  suppression precedence, double-opt-in capability); recommendation ranking
+  (deterministic, public-signals, k-anonymity); cookie inventory (strictly-
+  necessary only, no tracking storage).
+- SQL migration 0008_trust_and_growth.sql: legal_revisions, reviews +
+  review_moderation_events, free_acquisitions, marketing_consent_events,
+  bundle_versions, price_history, promotions + redemption_reservations,
+  recommendation_pins; RLS (anon reads published reviews only; AAL2 admin
+  read-only on the rest; price_history + recommendation_pins public read).
+- Docs: LEGAL_CONTENT_AND_RELEASE_GATE, PRIVACY_COOKIES_AND_RETENTION,
+  DIGITAL_CONTENT_CONSENT, REVIEWS_AND_MODERATION, FREE_ACQUISITION,
+  MARKETING_CONSENT, BUNDLES_AND_PROMOTIONS, RECOMMENDATIONS, TRUST_CONTENT.
+
+**Honest blockers (sandbox):** live data, admin CMS, E2E, pgTAP, EXPLAIN plans
+require a linked Supabase project. No mock counted as a live pass. Live charging
+remains fail-closed.
 
 ## Step 8 — Observability, security, performance, and accessibility hardening *(unimplemented)*
 
