@@ -239,13 +239,31 @@ load testing (k6), Lighthouse CI, axe/Playwright browser E2E, assistive-
 technology testing, backup/restore drill, and RPO/RTO measurement require a
 live Vercel/Supabase/Stripe/Resend environment. No mock counted as a live pass.
 
-## Step 9 — Vercel production deployment and release *(unimplemented)*
+## Step 9 — Vercel production deployment and release ✅ PREPARATION COMPLETE (live verification blocked; awaiting owner authorization)
 
-Create separate development/preview/production configuration, provision
-production Supabase/Stripe/email services, rotate and scope secrets, set matching
-regions, configure domain/DNS/TLS, validate webhook endpoints, run migrations
-safely, seed the real admin, complete merchant/legal/tax checks, execute a
-release checklist and rollback test, perform a real low-value
-purchase/refund/download test, and launch with monitoring.
+Implemented all reversible preparation. Live provisioning/DNS/Stripe/Resend/
+smoke-test/launch are `BLOCKED` or `NOT AUTHORIZED` — they require explicit
+owner authorization and live infrastructure not available in this sandbox.
 
-**Not started.**
+**Final status: `READY BUT AWAITING OWNER AUTHORIZATION`**
+All sandbox-verifiable checks pass (lint, typecheck, 321 tests, secret scan).
+
+---
+
+## Nine-Step Roadmap Status
+
+| Step | Status |
+| --- | --- |
+| 1 — Foundation + secure catalog data layer | ✅ COMPLETE |
+| 2 — Brand system + storefront shell | ✅ COMPLETE |
+| 3 — Live catalog + filters + SEO + audio | ✅ COMPLETE |
+| 4 — Admin auth + product CMS | ✅ COMPLETE |
+| 5 — Guest cart + Stripe checkout | ✅ COMPLETE |
+| 6 — Secure fulfillment + delivery email | ✅ COMPLETE |
+| 7 — Trust + legal + reviews + growth | ✅ COMPLETE |
+| 8 — Observability + security + a11y hardening | ✅ COMPLETE |
+| 9 — Production deployment + release | ✅ PREPARATION COMPLETE; live verification blocked |
+
+**The nine-step roadmap is architecturally complete. Live production release
+requires explicit owner authorization for provisioning, DNS, Stripe live mode,
+Resend domain, real smoke test, and launch.**

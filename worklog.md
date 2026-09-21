@@ -188,3 +188,19 @@ Work Log:
 Stage Summary:
 - Step 8 hardening architecture + verifiable pure-logic complete. Honest blockers: live OpenTelemetry, Sentry, alert routing, WAF, Supabase advisors, k6 load tests, Lighthouse CI, axe/Playwright, assistive-technology testing, backup/restore drill, RPO/RTO measurement — all require live infrastructure. No mock counted as a live pass. Live charging remains fail-closed. No production deployment.
 - Recommended next prompt title: Step 9 — Vercel production deployment and release.
+
+---
+Task ID: 10
+Agent: Z.ai Code (main)
+Task: Step 9 — Vercel production deployment and release.
+
+Work Log:
+- Preflight: Steps 1-8 green (308 tests). Confirmed no live infrastructure → all external actions are `blocked` or `not authorized`.
+- Pure-logic config validation (13 tests): src/lib/release/config-validation.ts — refuses Stripe test keys in production, live keys in preview, localhost origins in production, LIVE_CHECKOUT_ENABLED in non-production, charging enabled with a test key, missing/short fulfillment keys, missing webhook secret, missing Resend key, missing cron secret. Never prints rejected values.
+- Docs: RELEASE_CANDIDATE_AUDIT (12 blockers listed with severity/owner/evidence), ENVIRONMENT_OWNERSHIP_MATRIX (18 variables, no values), MIGRATION_MANIFEST (8 migrations, preflight/postflight, rollback), RELEASE_CHECKLIST_SIGNOFF (all gates `blocked` or `not authorized`), OPERATOR_HANDOFF (daily/weekly/monthly checks, incident contacts), DEPLOYMENT (staged procedure, kill switch, rollback).
+- ROADMAP: Step 9 preparation complete; nine-step roadmap architecturally complete.
+- Verified: lint ✓, typecheck ✓, 321 tests ✓.
+
+Stage Summary:
+- Step 9 preparation complete. Final status: `READY BUT AWAITING OWNER AUTHORIZATION`. Every external gate (production Supabase/Stripe/Resend/Vercel, DNS/TLS, admin provisioning, legal/tax/market review, monitoring, backup/restore drill, real smoke test) requires explicit owner authorization and live infrastructure not available in this sandbox. No mock counted as a live pass. Live charging remains fail-closed.
+- The nine-step roadmap is architecturally complete. Live production release requires explicit owner authorization for provisioning, DNS, Stripe live mode, Resend domain, real smoke test, and launch.
