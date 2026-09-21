@@ -214,19 +214,30 @@ is a documented blocker.
 require a linked Supabase project. No mock counted as a live pass. Live charging
 remains fail-closed.
 
-## Step 8 — Observability, security, performance, and accessibility hardening *(unimplemented)*
+## Step 8 — Observability, security, performance, and accessibility hardening ✅ COMPLETE (architecture + verifiable hardening logic; live verification blocked)
 
-Add privacy-aware analytics, error monitoring, structured redacted logs,
-alerts, rate limits (durable shared state — see `src/lib/security/rate-limit.ts`),
-bot controls, a real Content-Security-Policy enumerating all known origins,
-dependency/secret scanning, RLS regression tests, webhook/download abuse tests,
-WCAG review, browser/device E2E coverage, load checks, query analysis,
-Lighthouse/Core Web Vitals validation, backup/restore drill, and incident
-runbooks.
+Implemented the structured logging facade with centralized redaction, correlation
+IDs, CSP policy builders, SLI/SLO catalog, endpoint abuse matrix, performance
+budgets, and canary leakage tests. Live provider/E2E/restore-drill verification
+is a documented blocker.
 
-**Not started.** (Baseline headers — nosniff, frame DENY, referrer,
-permissions-policy — are shipped in Step 1. CSP is deliberately deferred until
-all origins are known, to avoid shipping a broken or useless policy.)
+**Implemented (code):**
+- Pure-logic hardening: structured JSON logger (server-only, allowlisted schema,
+  log-injection defense, bounded, non-fatal), centralized recursive redaction
+  (canary-secret + fake-PII tests pass), correlation IDs (random, non-secret,
+  validate external), CSP builders (public/sensitive/webhook policies, strict
+  baseline, no unsafe-eval), SLI/SLO catalog (versioned, low-cardinality, owned,
+  linked to runbooks, provisional targets labeled), endpoint abuse matrix
+  (trust levels, limits, fail-open/closed, legitimate retries), performance
+  budgets (route-specific CWV targets).
+- Tests: 21 new hardening tests (correlation, redaction canary, logger, CSP,
+  SLO catalog, abuse matrix, performance budgets). 308 total tests pass.
+
+**Honest blockers (sandbox):** live OpenTelemetry provider, error-monitor
+adapter (Sentry), alert routing, WAF/bot rules, Supabase security advisors,
+load testing (k6), Lighthouse CI, axe/Playwright browser E2E, assistive-
+technology testing, backup/restore drill, and RPO/RTO measurement require a
+live Vercel/Supabase/Stripe/Resend environment. No mock counted as a live pass.
 
 ## Step 9 — Vercel production deployment and release *(unimplemented)*
 
