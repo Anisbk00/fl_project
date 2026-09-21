@@ -173,3 +173,18 @@ Work Log:
 Stage Summary:
 - Step 7 architecture + verifiable pure-logic domain complete. Honest blockers: live data, admin CMS, E2E, pgTAP require a linked Supabase project. No mock counted as a live pass. Live charging remains fail-closed. No buyer accounts, bulk marketing, optional analytics, or deployment.
 - Recommended next prompt title: Step 8 — Observability, security, performance, and accessibility hardening.
+
+---
+Task ID: 9
+Agent: Z.ai Code (main)
+Task: Step 8 — Observability, security, performance, and accessibility hardening.
+
+Work Log:
+- Preflight: Steps 1-7 green (287 tests). Confirmed no live providers → all live verification is a documented blocker.
+- Pure-logic hardening (21 new tests, 308 total): correlation.ts (random non-secret IDs, validate external, regenerate on invalid), redaction.ts (recursive redaction with SECRET_KEY_PATTERNS + email/IP/fragment patterns, canary-secret + fake-PII tests, log-injection defense), logger.ts (server-only structured JSON facade, allowlisted schema, bounded, non-fatal), csp.ts (public/sensitive/webhook CSP builders, strict baseline, no unsafe-eval), slo-catalog.ts (versioned SLI/SLO entries, low-cardinality event names, provisional targets labeled), abuse-matrix.ts (endpoint trust levels, limits, fail-open/closed, legitimate retries, performance budgets).
+- Docs: 7 new (OBSERVABILITY, SECURITY_HARDENING, PERFORMANCE, ACCESSIBILITY, BACKUP_AND_RESTORE, INCIDENT_RESPONSE, RELEASE_CHECKLIST); ROADMAP (Step 8 COMPLETE).
+- Verified: lint ✓, typecheck ✓, 308 tests ✓.
+
+Stage Summary:
+- Step 8 hardening architecture + verifiable pure-logic complete. Honest blockers: live OpenTelemetry, Sentry, alert routing, WAF, Supabase advisors, k6 load tests, Lighthouse CI, axe/Playwright, assistive-technology testing, backup/restore drill, RPO/RTO measurement — all require live infrastructure. No mock counted as a live pass. Live charging remains fail-closed. No production deployment.
+- Recommended next prompt title: Step 9 — Vercel production deployment and release.
