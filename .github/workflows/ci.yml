@@ -22,7 +22,7 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
       NEXT_PUBLIC_SITE_NAME: Music Project Store
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
@@ -64,7 +64,7 @@ jobs:
       SUPABASE_URL: http://127.0.0.1:54321
       SUPABASE_SECRET_KEY: ${{ secrets.LOCAL_SUPABASE_SECRET_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
         with:
