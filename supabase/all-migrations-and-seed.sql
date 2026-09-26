@@ -2175,3 +2175,67 @@ insert into public.product_deliverables (product_id, bucket, storage_object_path
   on conflict do nothing;
 
 commit;
+
+-- ============================================================================
+-- Idempotent grants (Step 9 fix)
+-- ----------------------------------------------------------------------------
+-- The earlier `revoke all on public.products, ... from anon, authenticated`
+-- (line ~213) was too broad — it stripped SELECT on `products` and friends,
+-- so RLS policies on those tables were defined but UNREACHABLE: the role
+-- couldn't even attempt a SELECT, so every direct query returned HTTP 403.
+-- The public catalog worked because it goes through SECURITY INVOKER/DEFINER
+-- RPCs (search_products, get_product_by_slug, etc.) which run with the
+-- function owner's privileges. But the admin CMS queries the tables directly,
+-- which failed with 403.
+--
+-- This block re-grants the minimum privileges RLS needs to be evaluated:
+--   - SELECT on public-facing tables to anon + authenticated (RLS filters rows)
+--   - SELECT on admin-only tables to authenticated (RLS restricts to AAL2)
+--   - INSERT/UPDATE/DELETE on catalog tables to authenticated (RLS restricts
+--     mutations to AAL2 admins via is_active_admin() AND aal2())
+--
+-- These grants are safe: RLS is the real access boundary. A grant just lets
+-- the role REACH the table; RLS decides which rows are visible/mutable.
+-- ============================================================================
+
+-- Catalog (public reads via RLS; admin mutations via RLS)
+grant select on public.products to anon, authenticated;
+grant insert, update, delete on public.products to authenticated;
+grant select on public.product_genres to anon, authenticated;
+grant insert, delete on public.product_genres to authenticated;
+grant select on public.product_plugins to anon, authenticated;
+grant insert, delete on public.product_plugins to authenticated;
+grant select on public.product_media to anon, authenticated;
+grant insert, update, delete on public.product_media to authenticated;
+grant select on public.product_deliverables to anon, authenticated;
+grant insert, update, delete on public.product_deliverables to authenticated;
+grant select, insert, update, delete on public.genres, public.plugins to authenticated;
+grant select on public.genres, public.plugins to anon;
+
+-- Admin-only tables (SELECT to authenticated; RLS restricts to active AAL2 admin)
+grant select on public.admin_users to authenticated;
+grant select on public.audit_events to authenticated;
+grant select on public.product_rights to authenticated;
+grant select on public.upload_intents to authenticated;
+
+-- Payments + fulfillment (admin-only via RLS)
+grant select on public.guest_carts, public.guest_cart_items to authenticated;
+grant select, insert, update on public.guest_carts, public.guest_cart_items to authenticated;
+grant select on public.checkout_attempts, public.checkout_attempt_items to authenticated;
+grant select on public.orders, public.order_items to authenticated;
+grant select on public.refunds to authenticated;
+grant select on public.webhook_inbox to authenticated;
+grant select on public.fulfillment_generations, public.fulfillment_entitlements to authenticated;
+grant select on public.download_access_tokens, public.download_access_sessions to authenticated;
+grant select on public.delivery_messages, public.fulfillment_outbox to authenticated;
+grant select on public.download_url_issuances to authenticated;
+
+-- Trust + growth (Step 7)
+grant select on public.legal_revisions to authenticated;
+grant select on public.reviews, public.review_moderation_events to authenticated;
+grant select on public.free_acquisitions to authenticated;
+grant select on public.marketing_consent_events to authenticated;
+grant select on public.bundle_versions to authenticated;
+grant select on public.price_history to anon, authenticated;
+grant select on public.promotions to authenticated;
+grant select on public.recommendation_pins to anon, authenticated;
