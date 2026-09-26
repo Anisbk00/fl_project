@@ -258,3 +258,32 @@ Work Log:
 Stage Summary:
 - Admin login now at the secret URL /control-7f3a9b2c/login — not discoverable by URL scanning.
 - To rotate the secret: edit ADMIN_BASE_PATH in src/lib/admin-path.ts AND rename the folder to match, then redeploy.
+
+---
+Task ID: 14
+Agent: Z.ai Code (main) — focused SQL idempotency edit
+Task: Make /home/z/my-project/supabase/all-migrations-and-seed.sql fully idempotent so re-running it on a partially-provisioned Supabase database no longer fails with `policy "..." already exists` / `trigger "..." already exists`.
+
+Work Log:
+- Read full file (2134 lines → 2177 lines after edits). Mapped every `create policy` (46) and `create trigger` (12) statement and the immediately-preceding line for each.
+- Did NOT touch the 4 `CREATE TYPE` DO-block wrappers at the top (already idempotent — previous Task 14 prep).
+- Did NOT touch `create table if not exists`, `create index if not exists`, `create or replace function`, `alter table ... add column if not exists`, `insert ... on conflict do nothing`, `revoke`/`grant`, or comments.
+- CREATE POLICY: 40 of 46 statements lacked a matching `drop policy if exists "<name>" on public.<table>;` on the immediately-preceding line. Added it before each. (The 6 already-matching ones — `product_public_read`, `product_public_admin_write`, `product_private_admin_all`, `products_admin_all`@1038, `media_admin_all`@1045, `deliverables_admin_all`@1050 — left untouched. The 1 case where the preceding drop had a *different* name — `admin_users_self_select` preceded by `drop policy if exists "admin_users_admin_all"` — also got a matching drop added before its create, leaving the existing cleanup-drop in place since it still serves a purpose: it removes the Step-1 `admin_users_admin_all` policy before the new `admin_users_self_select` + `admin_users_admin_mutate` policies are installed.)
+- CREATE TRIGGER: For 4 paired "drop A; drop B; create A; body; create B; body" sections (audit_events / order_items / attempt_items / fulfillment_generations) the original code was already idempotent in aggregate (both triggers dropped before either created), but the second create of each pair did NOT have a `drop trigger if exists` on the immediately-preceding line — failing the verification grep. Refactored each paired block into a clean `drop A; create A; body; drop B; create B; body` pattern so every create has its matching drop immediately before it, with zero duplicate drops. Added 3 simple `drop trigger if exists` lines for the lone-wolf triggers at lines 168 (`products_touch_updated_at`), 171 (`product_deliverables_touch_updated_at`), and 1076 (`product_rights_touch_updated_at`).
+- Used MultiEdit (47 atomic edits in one call: 3 simple trigger-adds + 4 trigger-block refactors + 40 policy-adds). All edits non-overlapping.
+- Verification (all PASS):
+  - `grep -B1 "create policy" | grep -c "drop policy if exists"` → 46
+  - `grep -c "create policy"` → 46  (match ✓)
+  - `grep -B1 "create trigger" | grep -c "drop trigger if exists"` → 12
+  - `grep -c "create trigger"` → 12  (match ✓)
+  - `grep -c "do \$\$ begin"` → 4
+  - `grep -c "end \$\$;"` → 4  (match ✓)
+  - Custom awk name-matching check (every create has a drop for the SAME name on the immediately-preceding line) → 0 mismatches for both policy and trigger.
+- Dev server unaffected: `supabase/` excluded from tsconfig; `dev.log` clean (Next.js 16.1.3 still serving / 200s).
+- Committed and pushed to origin/main as `0471bf5a850979655806279a1e82dccc786519d2` ("Make all-migrations-and-seed.sql fully idempotent ..."). `git push origin main` succeeded: 7572c1b..0471bf5.
+
+Report:
+- Total `create policy` count: 46. Drops added: 40 (39 statements that had NO preceding drop at all + 1 statement at line 1027 that had a non-matching preceding drop — `admin_users_self_select` preceded by `drop "admin_users_admin_all"`). The remaining 6 already had matching preceding drops.
+- Total `create trigger` count: 12. Drops effectively added/rearranged: 11 — broken down as 7 statements that had NO preceding drop at all (3 simple adds at 168/171/1076 + 4 second-of-pair creates at 1069/1474/1480/1820 that received a preceding drop via the paired-block refactor) and 4 statements that had a NON-MATCHING preceding drop (1067/1472/1478/1818 — the first of each pair — which via the paired-block refactor now have a matching drop on the immediately-preceding line). The remaining 1 (`products_search_vector_trigger` at line 378) already had a matching preceding drop and was left untouched.
+- Commit hash pushed: 0471bf5a850979655806279a1e82dccc786519d2 (short: 0471bf5)
+- File is now safe to re-run: yes. Every `CREATE TYPE` is in a `DO $$ ... END $$;` guard (pre-existing), every `CREATE POLICY` is preceded by `DROP POLICY IF EXISTS` of the same name on the same table, and every `CREATE TRIGGER` is preceded by `DROP TRIGGER IF EXISTS` of the same name on the same table. All other statement types were already idempotent (`IF NOT EXISTS` / `OR REPLACE` / `ON CONFLICT DO NOTHING`).
