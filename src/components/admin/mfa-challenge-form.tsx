@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ADMIN_DASHBOARD_PATH,
@@ -11,6 +11,8 @@ import { Button, LinkButton } from "@/components/site/button";
 import { getBrowserClient } from "@/lib/supabase/browser-client";
 import { cn } from "@/lib/utils";
 
+type Phase = "checking" | "no-factor" | "ready" | "unconfigured";
+
 /**
  * TOTP challenge (client island). Lists the user's verified TOTP factors,
  * challenges one, and verifies the 6-digit code. On success the session is
@@ -18,37 +20,60 @@ import { cn } from "@/lib/utils";
  *
  * IMPORTANT UX: This system uses TOTP (authenticator apps like Google
  * Authenticator, Authy, 1Password) — NOT email or SMS. The 6-digit code comes
- * FROM the user's authenticator app, not from a message we send. If the user
- * has no enrolled factor, we send them to the enrollment page (which shows a
- * QR code to scan with their app).
+ * FROM the user's authenticator app, not from a message we send. On mount, we
+ * check whether the user has any enrolled factors. If not, we IMMEDIATELY show
+ * the "Set up my authenticator" screen (no need to click Verify first).
  */
 export function MfaChallengeForm({ configured }: { configured: boolean }) {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [noFactor, setNoFactor] = useState(false);
+  const [phase, setPhase] = useState<Phase>(configured ? "checking" : "unconfigured");
+
+  // Check for enrolled factors on mount. If none, immediately show the
+  // enrollment CTA — the user should NOT have to click Verify first.
+  // (Initial phase is already "unconfigured" when !configured, so the effect
+  // only runs the factor check when configured.)
+  useEffect(() => {
+    if (!configured) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const client = getBrowserClient();
+        const { data, error: listError } = await client.auth.mfa.listFactors();
+        if (cancelled) return;
+        if (listError || !data?.totp?.length) {
+          setPhase("no-factor");
+        } else {
+          setPhase("ready");
+        }
+      } catch {
+        if (!cancelled) setPhase("no-factor");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [configured]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!configured) {
-      setError("Authentication isn't configured in this environment.");
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
       const client = getBrowserClient();
-      const { data: factors, error: listError } =
-        await client.auth.mfa.listFactors();
-      if (listError || !factors?.totp?.length) {
-        setNoFactor(true);
+      const { data: factors } = await client.auth.mfa.listFactors();
+      const factor = factors?.totp?.[0];
+      if (!factor) {
+        setPhase("no-factor");
+        setLoading(false);
         return;
       }
-      const factor = factors.totp[0]!;
       const challenge = await client.auth.mfa.challenge({ factorId: factor.id });
       if (challenge.error) {
         setError("Could not issue an MFA challenge.");
+        setLoading(false);
         return;
       }
       const verifyRes = await client.auth.mfa.verify({
@@ -58,6 +83,7 @@ export function MfaChallengeForm({ configured }: { configured: boolean }) {
       });
       if (verifyRes.error) {
         setError("Invalid code. Try again.");
+        setLoading(false);
         return;
       }
       // Keep spinner spinning during navigation (no setLoading(false) on success).
@@ -67,10 +93,10 @@ export function MfaChallengeForm({ configured }: { configured: boolean }) {
       setError("Verification failed.");
       setLoading(false);
     }
-    // No finally: on success, spinner stays until navigation completes.
   }
 
-  if (!configured) {
+  // --- Unconfigured: no Supabase env vars -----------------------------------
+  if (phase === "unconfigured") {
     return (
       <p className="t-body-sm text-ink-secondary">
         Authentication isn't configured in this environment, so the MFA
@@ -79,7 +105,21 @@ export function MfaChallengeForm({ configured }: { configured: boolean }) {
     );
   }
 
-  if (noFactor) {
+  // --- Checking: spinner while we list factors ------------------------------
+  if (phase === "checking") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-8">
+        <svg viewBox="0 0 24 24" className="h-6 w-6 animate-spin text-ink-muted" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+        <p className="t-caption text-ink-muted">Checking your authenticator…</p>
+      </div>
+    );
+  }
+
+  // --- No factor: explain TOTP + send to enrollment -------------------------
+  if (phase === "no-factor") {
     return (
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-2 rounded-md border border-line bg-surface p-4">
@@ -108,6 +148,7 @@ export function MfaChallengeForm({ configured }: { configured: boolean }) {
     );
   }
 
+  // --- Ready: user has an enrolled factor, show the 6-digit challenge -------
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" aria-busy={loading || undefined}>
       <div className="flex flex-col gap-1.5">
