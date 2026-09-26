@@ -18,6 +18,14 @@ import {
 import { getServerClient } from "@/lib/supabase/server-client";
 import { requireAdminOrFailure } from "@/lib/auth/require-admin";
 import type { Database } from "@/types/database";
+import {
+  MIME_ALLOWLISTS,
+  MAX_BYTES,
+  exceedsSize,
+  hasPathTraversal,
+  validateFilename,
+  type AssetRole,
+} from "@/features/admin/uploads";
 
 const SLUG_REGEX = /^(?!-)[a-z0-9]+(?:-[a-z0-9]+)*(?<!-)$/;
 
@@ -511,6 +519,541 @@ export async function deletePlugin(formData: FormData): Promise<ActionResult> {
   }
   revalidatePath(ADMIN_TAXONOMIES_PATH);
   redirect(ADMIN_TAXONOMIES_PATH);
+}
+
+// ---------------------------------------------------------------------------
+// Media + Deliverables — register / update-alt-text / toggle-active / delete.
+// ---------------------------------------------------------------------------
+// Browser uploads DIRECTLY to Supabase Storage (no server round-trip for the
+// bytes — better for large audio/video, no body-size limit on the action).
+// These actions INSERT/UPDATE/DELETE the DB rows AFTER the Storage upload
+// succeeds. Every claim is re-validated server-side:
+//   - AAL2 admin (`requireAdminOrFailure({ aal2: true })`)
+//   - the actual product slug is fetched from the DB by `productId` so the
+//     client can't lie about the path's slug segment
+//   - the path is checked for traversal (`hasPathTraversal`) and must match
+//     a strict regex shaped `products/<actual-slug>/<kind>-<uuid>.<ext>` for
+//     media or `products/<actual-slug>/v<N>/<sanitized-filename>.zip` for
+//     deliverables — extensions/MIME/size are checked against the same
+//     `uploads.ts` allow-lists the client already used (defense in depth)
+// ---------------------------------------------------------------------------
+
+const MEDIA_KIND_VALUES = ["cover_image", "audio_preview", "video_preview"] as const;
+type MediaKind = (typeof MEDIA_KIND_VALUES)[number];
+
+const MEDIA_KIND_TO_ROLE: Record<MediaKind, AssetRole> = {
+  cover_image: "cover_image",
+  audio_preview: "audio_preview",
+  video_preview: "video_preview",
+};
+
+/** Strict canonical shape: `products/<slug>/<kind>-<uuid>.<allowed-ext>`. */
+const MEDIA_PATH_REGEX: Record<MediaKind, RegExp> = {
+  cover_image:
+    /^products\/([a-z0-9-]+)\/cover_image-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(png|webp|jpe?g)$/,
+  audio_preview:
+    /^products\/([a-z0-9-]+)\/audio_preview-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(mp3|m4a|aac)$/,
+  video_preview:
+    /^products\/([a-z0-9-]+)\/video_preview-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(mp4|webm)$/,
+};
+
+/** Strict canonical shape: `products/<slug>/v<N>/<sanitized-name>.zip`. */
+const DELIVERABLE_PATH_REGEX =
+  /^products\/([a-z0-9-]+)\/v(\d{1,6})\/[a-z0-9][a-z0-9._-]{0,250}\.zip$/;
+
+const SHA_256_REGEX = /^[a-f0-9]{64}$/;
+
+const mediaInputSchema = z
+  .object({
+    kind: z.enum(MEDIA_KIND_VALUES),
+    bucket: z.string().trim().min(1).max(64),
+    storageObjectPath: z.string().trim().max(512).optional().nullable(),
+    externalUrl: z.string().trim().url().max(2048).optional().nullable(),
+    mimeType: z.string().trim().max(200).optional().nullable(),
+    bytes: z.number().int().min(0).optional().nullable(),
+    altText: z.string().trim().max(500).optional().nullable(),
+  })
+  .refine(
+    (v) => Boolean(v.storageObjectPath) !== Boolean(v.externalUrl),
+    {
+      message:
+        "Provide exactly one of storageObjectPath or externalUrl (not both, not neither).",
+    },
+  );
+
+const deliverableInputSchema = z.object({
+  bucket: z.string().trim().min(1).max(64),
+  storageObjectPath: z.string().trim().min(1).max(512),
+  customerFilename: z.string().trim().min(1).max(255),
+  mimeType: z.string().trim().min(1).max(200),
+  bytes: z.number().int().min(1),
+  sha256: z.string().trim().regex(SHA_256_REGEX).optional().nullable(),
+  version: z.number().int().min(1).max(1_000_000),
+});
+
+/**
+ * registerMedia — INSERT a `product_media` row for a Storage upload OR an
+ * external URL. The client uploads to Storage directly (browser→Supabase,
+ * no server round-trip for the bytes), then calls this action to insert the
+ * DB row. The server re-validates the path against the actual product slug
+ * fetched from the DB by `productId` — the client can't lie about the slug
+ * in the path.
+ */
+export async function registerMedia(
+  productId: string,
+  input: unknown,
+): Promise<ActionResult> {
+  const outcome = await requireAdminOrFailure({ aal2: true });
+  if (!outcome.ok) {
+    return {
+      ok: false,
+      message:
+        outcome.reason === "unconfigured"
+          ? "Admin isn't configured in this environment."
+          : "Unauthorized — you must be signed in as an AAL2 admin.",
+    };
+  }
+
+  if (!z.string().uuid().safeParse(productId).success) {
+    return { ok: false, message: "Invalid product id." };
+  }
+
+  const parsed = mediaInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errors: collectZodErrors(parsed.error) };
+  }
+  const v = parsed.data;
+
+  const client = await adminClient();
+
+  // Fetch the actual product so the path's slug segment can be checked
+  // against the DB-trusted slug — never the client's claim.
+  const { data: product, error: prodErr } = await client
+    .from("products")
+    .select("id,slug")
+    .eq("id", productId)
+    .maybeSingle();
+  if (prodErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(prodErr, "look up the product"),
+    };
+  }
+  if (!product) {
+    return { ok: false, message: "That product does not exist." };
+  }
+
+  const role = MEDIA_KIND_TO_ROLE[v.kind];
+
+  // External URL mode — no storage path; just URL-validate (the Zod schema
+  // already enforces a URL). MIME/bytes may be null.
+  if (v.externalUrl) {
+    if (v.mimeType && !MIME_ALLOWLISTS[role].includes(v.mimeType)) {
+      return {
+        ok: false,
+        message: `MIME type ${v.mimeType} is not allowed for ${v.kind}.`,
+      };
+    }
+    const row: Database["public"]["Tables"]["product_media"]["Insert"] = {
+      product_id: productId,
+      kind: v.kind,
+      bucket: v.bucket,
+      storage_object_path: null,
+      external_url: v.externalUrl,
+      mime_type: v.mimeType ?? null,
+      bytes: v.bytes ?? null,
+      alt_text: emptyToNull(v.altText ?? null),
+    };
+    const { error } = await client.from("product_media").insert(row);
+    if (error) {
+      return {
+        ok: false,
+        message: friendlyPostgresError(error, "register the media"),
+      };
+    }
+    revalidatePath(`${ADMIN_PRODUCTS_PATH}/${productId}`);
+    return { ok: true };
+  }
+
+  // Storage upload mode — strict path revalidation.
+  const path = v.storageObjectPath;
+  if (!path) {
+    return {
+      ok: false,
+      message: "Provide either a storage path or an external URL.",
+    };
+  }
+  if (hasPathTraversal(path)) {
+    return { ok: false, message: "Invalid storage path (traversal rejected)." };
+  }
+  const match = MEDIA_PATH_REGEX[v.kind].exec(path);
+  if (!match) {
+    return {
+      ok: false,
+      message:
+        "The storage path doesn't match the expected pattern for this kind.",
+    };
+  }
+  if (match[1] !== product.slug) {
+    return {
+      ok: false,
+      message: "The storage path's slug doesn't match this product.",
+    };
+  }
+  if (v.mimeType && !MIME_ALLOWLISTS[role].includes(v.mimeType)) {
+    return {
+      ok: false,
+      message: `MIME type ${v.mimeType} is not allowed for ${v.kind}.`,
+    };
+  }
+  if (v.bytes != null && exceedsSize(role, v.bytes)) {
+    return {
+      ok: false,
+      message: `File is too large for ${v.kind} (max ${MAX_BYTES[role].toLocaleString()} bytes).`,
+    };
+  }
+
+  const row: Database["public"]["Tables"]["product_media"]["Insert"] = {
+    product_id: productId,
+    kind: v.kind,
+    bucket: v.bucket,
+    storage_object_path: path,
+    external_url: null,
+    mime_type: v.mimeType ?? null,
+    bytes: v.bytes ?? null,
+    alt_text: emptyToNull(v.altText ?? null),
+  };
+  const { error } = await client.from("product_media").insert(row);
+  if (error) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(error, "register the media"),
+    };
+  }
+  revalidatePath(`${ADMIN_PRODUCTS_PATH}/${productId}`);
+  return { ok: true };
+}
+
+/**
+ * updateMediaAltText — inline-edit the alt_text on a media row. Used by the
+ * cover-image subsection for accessibility. Truncates to 500 chars; empty
+ * string is normalized back to NULL.
+ */
+export async function updateMediaAltText(
+  mediaId: string,
+  altText: string,
+): Promise<ActionResult> {
+  const outcome = await requireAdminOrFailure({ aal2: true });
+  if (!outcome.ok) {
+    return { ok: false, message: "Unauthorized — AAL2 required." };
+  }
+  if (!z.string().uuid().safeParse(mediaId).success) {
+    return { ok: false, message: "Invalid media id." };
+  }
+
+  const trimmed = (altText ?? "").trim().slice(0, 500);
+
+  const client = await adminClient();
+
+  const { data: row, error: fetchErr } = await client
+    .from("product_media")
+    .select("id,product_id")
+    .eq("id", mediaId)
+    .maybeSingle();
+  if (fetchErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(fetchErr, "look up the media"),
+    };
+  }
+  if (!row) {
+    return { ok: false, message: "That media row does not exist." };
+  }
+
+  const { error: updateErr } = await client
+    .from("product_media")
+    .update({ alt_text: trimmed.length === 0 ? null : trimmed })
+    .eq("id", mediaId);
+  if (updateErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(updateErr, "update the alt text"),
+    };
+  }
+  revalidatePath(`${ADMIN_PRODUCTS_PATH}/${row.product_id}`);
+  return { ok: true };
+}
+
+/**
+ * deleteMedia — delete the Storage object (if any) and the DB row. An
+ * external-URL media row has no Storage object to delete.
+ */
+export async function deleteMedia(mediaId: string): Promise<ActionResult> {
+  const outcome = await requireAdminOrFailure({ aal2: true });
+  if (!outcome.ok) {
+    return { ok: false, message: "Unauthorized — AAL2 required." };
+  }
+  if (!z.string().uuid().safeParse(mediaId).success) {
+    return { ok: false, message: "Invalid media id." };
+  }
+
+  const client = await adminClient();
+
+  const { data: row, error: fetchErr } = await client
+    .from("product_media")
+    .select("id,product_id,bucket,storage_object_path,external_url,kind")
+    .eq("id", mediaId)
+    .maybeSingle();
+  if (fetchErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(fetchErr, "look up the media"),
+    };
+  }
+  if (!row) {
+    return { ok: false, message: "That media row does not exist." };
+  }
+
+  // Best-effort Storage delete. A leaked Storage object is a minor issue; a
+  // leaked DB row pointing at a non-existent object is worse. If the Storage
+  // delete fails (network blip, RLS surprise), we still drop the DB row so
+  // the UI doesn't show a dangling reference.
+  if (row.storage_object_path) {
+    try {
+      await client.storage.from(row.bucket).remove([row.storage_object_path]);
+    } catch {
+      // swallow — proceed to delete the DB row regardless
+    }
+  }
+
+  const { error: deleteErr } = await client
+    .from("product_media")
+    .delete()
+    .eq("id", mediaId);
+  if (deleteErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(deleteErr, "delete the media"),
+    };
+  }
+  revalidatePath(`${ADMIN_PRODUCTS_PATH}/${row.product_id}`);
+  return { ok: true };
+}
+
+/**
+ * registerDeliverable — INSERT a `product_deliverables` row for a private
+ * ZIP uploaded to `product-private`. The client computes the SHA-256 via
+ * Web Crypto API before uploading, then uploads to
+ * `products/<slug>/v<N>/<sanitized-filename>.zip`, then calls this action.
+ */
+export async function registerDeliverable(
+  productId: string,
+  input: unknown,
+): Promise<ActionResult> {
+  const outcome = await requireAdminOrFailure({ aal2: true });
+  if (!outcome.ok) {
+    return {
+      ok: false,
+      message:
+        outcome.reason === "unconfigured"
+          ? "Admin isn't configured in this environment."
+          : "Unauthorized — you must be signed in as an AAL2 admin.",
+    };
+  }
+
+  if (!z.string().uuid().safeParse(productId).success) {
+    return { ok: false, message: "Invalid product id." };
+  }
+
+  const parsed = deliverableInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errors: collectZodErrors(parsed.error) };
+  }
+  const v = parsed.data;
+
+  const client = await adminClient();
+
+  const { data: product, error: prodErr } = await client
+    .from("products")
+    .select("id,slug")
+    .eq("id", productId)
+    .maybeSingle();
+  if (prodErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(prodErr, "look up the product"),
+    };
+  }
+  if (!product) {
+    return { ok: false, message: "That product does not exist." };
+  }
+
+  if (hasPathTraversal(v.storageObjectPath)) {
+    return { ok: false, message: "Invalid storage path (traversal rejected)." };
+  }
+  const match = DELIVERABLE_PATH_REGEX.exec(v.storageObjectPath);
+  if (!match) {
+    return {
+      ok: false,
+      message:
+        "The storage path doesn't match the expected pattern `products/<slug>/v<N>/<name>.zip`.",
+    };
+  }
+  if (match[1] !== product.slug) {
+    return {
+      ok: false,
+      message: "The storage path's slug doesn't match this product.",
+    };
+  }
+  if (Number.parseInt(match[2] ?? "0", 10) !== v.version) {
+    return {
+      ok: false,
+      message: "The path's version segment doesn't match the supplied version.",
+    };
+  }
+
+  // Defense-in-depth: re-validate the customer filename via uploads.ts.
+  const fn = validateFilename(v.customerFilename);
+  if (!fn.ok) {
+    return { ok: false, message: "Invalid customer filename." };
+  }
+
+  if (!MIME_ALLOWLISTS.private_deliverable.includes(v.mimeType)) {
+    return {
+      ok: false,
+      message: `MIME type ${v.mimeType} is not allowed for deliverables.`,
+    };
+  }
+  if (exceedsSize("private_deliverable", v.bytes)) {
+    return {
+      ok: false,
+      message: `File is too large (max ${MAX_BYTES.private_deliverable.toLocaleString()} bytes).`,
+    };
+  }
+
+  const row: Database["public"]["Tables"]["product_deliverables"]["Insert"] = {
+    product_id: productId,
+    bucket: v.bucket,
+    storage_object_path: v.storageObjectPath,
+    customer_filename: v.customerFilename,
+    mime_type: v.mimeType,
+    bytes: v.bytes,
+    version: v.version,
+    sha_256: v.sha256 ?? null,
+    active: true,
+  };
+  const { error } = await client.from("product_deliverables").insert(row);
+  if (error) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(error, "register the deliverable"),
+    };
+  }
+  revalidatePath(`${ADMIN_PRODUCTS_PATH}/${productId}`);
+  return { ok: true };
+}
+
+/**
+ * toggleDeliverableActive — flip the `active` flag on a deliverable. Inactive
+ * deliverables aren't offered to buyers, but the row + Storage object are
+ * preserved (so the operator can reactivate later without re-uploading).
+ */
+export async function toggleDeliverableActive(
+  deliverableId: string,
+  active: boolean,
+): Promise<ActionResult> {
+  const outcome = await requireAdminOrFailure({ aal2: true });
+  if (!outcome.ok) {
+    return { ok: false, message: "Unauthorized — AAL2 required." };
+  }
+  if (!z.string().uuid().safeParse(deliverableId).success) {
+    return { ok: false, message: "Invalid deliverable id." };
+  }
+
+  const client = await adminClient();
+
+  const { data: row, error: fetchErr } = await client
+    .from("product_deliverables")
+    .select("id,product_id")
+    .eq("id", deliverableId)
+    .maybeSingle();
+  if (fetchErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(fetchErr, "look up the deliverable"),
+    };
+  }
+  if (!row) {
+    return { ok: false, message: "That deliverable does not exist." };
+  }
+
+  const { error: updateErr } = await client
+    .from("product_deliverables")
+    .update({ active, updated_at: new Date().toISOString() })
+    .eq("id", deliverableId);
+  if (updateErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(updateErr, "toggle the deliverable"),
+    };
+  }
+  revalidatePath(`${ADMIN_PRODUCTS_PATH}/${row.product_id}`);
+  return { ok: true };
+}
+
+/**
+ * deleteDeliverable — delete the Storage object AND the DB row. Used when an
+ * operator wants to fully remove a deliverable (e.g. it was uploaded by
+ * mistake, or the file is being replaced). The buyer-facing download path
+ * checks `active=true` so this is safe even mid-session.
+ */
+export async function deleteDeliverable(
+  deliverableId: string,
+): Promise<ActionResult> {
+  const outcome = await requireAdminOrFailure({ aal2: true });
+  if (!outcome.ok) {
+    return { ok: false, message: "Unauthorized — AAL2 required." };
+  }
+  if (!z.string().uuid().safeParse(deliverableId).success) {
+    return { ok: false, message: "Invalid deliverable id." };
+  }
+
+  const client = await adminClient();
+
+  const { data: row, error: fetchErr } = await client
+    .from("product_deliverables")
+    .select("id,product_id,bucket,storage_object_path")
+    .eq("id", deliverableId)
+    .maybeSingle();
+  if (fetchErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(fetchErr, "look up the deliverable"),
+    };
+  }
+  if (!row) {
+    return { ok: false, message: "That deliverable does not exist." };
+  }
+
+  // Best-effort Storage delete — proceed to drop the DB row regardless.
+  try {
+    await client.storage.from(row.bucket).remove([row.storage_object_path]);
+  } catch {
+    // swallow — proceed to delete the DB row
+  }
+
+  const { error: deleteErr } = await client
+    .from("product_deliverables")
+    .delete()
+    .eq("id", deliverableId);
+  if (deleteErr) {
+    return {
+      ok: false,
+      message: friendlyPostgresError(deleteErr, "delete the deliverable"),
+    };
+  }
+  revalidatePath(`${ADMIN_PRODUCTS_PATH}/${row.product_id}`);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

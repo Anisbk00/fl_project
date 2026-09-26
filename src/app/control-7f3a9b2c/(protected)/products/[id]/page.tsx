@@ -18,6 +18,14 @@ import {
   type ProductFormValues,
 } from "@/components/admin/product-form";
 import { ProductLifecycleButtons } from "@/components/admin/product-lifecycle-buttons";
+import {
+  MediaManager,
+  type MediaRow,
+} from "@/components/admin/media-manager";
+import {
+  DeliverableManager,
+  type DeliverableRow,
+} from "@/components/admin/deliverable-manager";
 
 export const metadata: Metadata = {
   title: "Edit product",
@@ -81,29 +89,54 @@ async function adminClient(): Promise<SupabaseClient<Database>> {
 async function loadEditData(id: string) {
   try {
     const client = await adminClient();
-    const [prodRes, genreJoinRes, pluginJoinRes, genresRes, pluginsRes] =
-      await Promise.all([
-        client
-          .from("products")
-          .select(
-            "id,slug,title,short_description,long_description,product_type,lifecycle,rights_status,price,price_currency,compare_at_price,daw_name,daw_version,bpm,musical_key,duration_seconds,total_size_bytes,included_formats,featured,seo_title,seo_description,row_version,published_at,created_at,updated_at",
-          )
-          .eq("id", id)
-          .maybeSingle(),
-        client
-          .from("product_genres")
-          .select("genre_id")
-          .eq("product_id", id),
-        client
-          .from("product_plugins")
-          .select("plugin_id,min_version,required")
-          .eq("product_id", id),
-        client.from("genres").select("id,slug,name").order("name"),
-        client
-          .from("plugins")
-          .select("id,slug,name,vendor")
-          .order("name"),
-      ]);
+    const [
+      prodRes,
+      genreJoinRes,
+      pluginJoinRes,
+      genresRes,
+      pluginsRes,
+      mediaRes,
+      deliverablesRes,
+    ] = await Promise.all([
+      client
+        .from("products")
+        .select(
+          "id,slug,title,short_description,long_description,product_type,lifecycle,rights_status,price,price_currency,compare_at_price,daw_name,daw_version,bpm,musical_key,duration_seconds,total_size_bytes,included_formats,featured,seo_title,seo_description,row_version,published_at,created_at,updated_at",
+        )
+        .eq("id", id)
+        .maybeSingle(),
+      client
+        .from("product_genres")
+        .select("genre_id")
+        .eq("product_id", id),
+      client
+        .from("product_plugins")
+        .select("plugin_id,min_version,required")
+        .eq("product_id", id),
+      client.from("genres").select("id,slug,name").order("name"),
+      client
+        .from("plugins")
+        .select("id,slug,name,vendor")
+        .order("name"),
+      // Existing media rows — passed to <MediaManager> as initial state so
+      // the operator sees what's already uploaded before re-rendering after
+      // a mutation.
+      client
+        .from("product_media")
+        .select(
+          "id,kind,bucket,storage_object_path,external_url,mime_type,bytes,alt_text,created_at",
+        )
+        .eq("product_id", id)
+        .order("created_at", { ascending: false }),
+      // Existing deliverables — passed to <DeliverableManager>.
+      client
+        .from("product_deliverables")
+        .select(
+          "id,bucket,storage_object_path,customer_filename,mime_type,bytes,version,sha_256,active,created_at,updated_at",
+        )
+        .eq("product_id", id)
+        .order("version", { ascending: false }),
+    ]);
 
     if (prodRes.error) {
       return {
@@ -113,13 +146,22 @@ async function loadEditData(id: string) {
     if (!prodRes.data) {
       return { error: "not_found" as const };
     }
-    if (genreJoinRes.error || pluginJoinRes.error || genresRes.error || pluginsRes.error) {
+    if (
+      genreJoinRes.error ||
+      pluginJoinRes.error ||
+      genresRes.error ||
+      pluginsRes.error ||
+      mediaRes.error ||
+      deliverablesRes.error
+    ) {
       return {
-        error: `Could not load the product's taxonomy: ${
+        error: `Could not load the product's data: ${
           genreJoinRes.error?.message ||
           pluginJoinRes.error?.message ||
           genresRes.error?.message ||
-          pluginsRes.error?.message
+          pluginsRes.error?.message ||
+          mediaRes.error?.message ||
+          deliverablesRes.error?.message
         }`,
       };
     }
@@ -129,6 +171,8 @@ async function loadEditData(id: string) {
       pluginJoins: (pluginJoinRes.data ?? []) as ProductPluginJoinRow[],
       genres: (genresRes.data ?? []) as ProductFormGenre[],
       plugins: (pluginsRes.data ?? []) as ProductFormPlugin[],
+      media: ((mediaRes.data ?? []) as unknown as MediaRow[]),
+      deliverables: ((deliverablesRes.data ?? []) as unknown as DeliverableRow[]),
     };
   } catch (e) {
     return {
@@ -167,7 +211,7 @@ export default async function ProductEditorPage({ params }: PageProps) {
     );
   }
 
-  const { product, genreJoins, pluginJoins, genres, plugins } = data;
+  const { product, genreJoins, pluginJoins, genres, plugins, media, deliverables } = data;
 
   const initialValues: ProductFormValues = {
     id: product.id,
@@ -271,6 +315,30 @@ export default async function ProductEditorPage({ params }: PageProps) {
           genres={genres}
           plugins={plugins}
           submitLabel="Save changes"
+        />
+      </div>
+
+      {/* Media manager — cover images, audio previews, video previews.
+          Browser uploads directly to Supabase Storage (product-public bucket,
+          RLS-gated admin-write). Server Actions INSERT/UPDATE/DELETE the DB
+          rows after the upload succeeds. */}
+      <div className="mt-8">
+        <MediaManager
+          productId={product.id}
+          slug={product.slug}
+          initialMedia={media}
+        />
+      </div>
+
+      {/* Deliverable manager — the actual downloadable ZIPs buyers get
+          after paying. Stored in the private product-private bucket (no
+          public reads; signed URLs are issued server-side after verified
+          payment). */}
+      <div className="mt-8">
+        <DeliverableManager
+          productId={product.id}
+          slug={product.slug}
+          initialDeliverables={deliverables}
         />
       </div>
     </Container>
