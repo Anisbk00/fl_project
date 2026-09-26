@@ -74,20 +74,12 @@ async function loadDashboard(): Promise<
     ]);
 
     if (draftRes.error || publishedRes.error || archivedRes.error) {
-      const firstErr =
-        draftRes.error || publishedRes.error || archivedRes.error;
-      // Dump the full error object so we can see exactly what Supabase
-      // returned — a PostgrestError normally has {code, message, details, hint},
-      // but some failures (network, auth, malformed response) produce a
-      // different shape. JSON.stringify reveals all enumerable fields.
-      let errDump: string;
-      try {
-        errDump = JSON.stringify(firstErr, null, 2);
-      } catch {
-        errDump = String(firstErr);
-      }
+      // 403 from PostgREST = RLS denial. The admin SELECT policy on products
+      // requires is_active_admin() AND aal2(). Run diagnostics to find which
+      // one is false, so the operator knows exactly what to fix.
+      const diag = await runRlsDiagnostics(client);
       return {
-        error: `Could not load product counts. Raw error object:\n${errDump}\n\nStatus: ${draftRes.status ?? "?"}/${publishedRes.status ?? "?"}/${archivedRes.status ?? "?"}. Check that the 'products' table exists, 'is_active_admin()' + 'aal2()' functions are defined, and your session is AAL2.`,
+        error: `Could not load product counts (HTTP 403 = RLS denial). ${diag}`,
       };
     }
     if (auditRes.error) {
