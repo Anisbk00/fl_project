@@ -56,3 +56,8 @@ server.log
 # Step 2 review artifacts (transient screenshots/scan reports)
 review-*.png
 tool-results/
+# Env files with secrets
+.env.local
+.env
+.env.local
+.env
