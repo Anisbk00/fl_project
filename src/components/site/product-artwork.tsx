@@ -60,10 +60,6 @@ export function ProductArtwork({
           loading="lazy"
           decoding="async"
           className="absolute inset-0 h-full w-full object-cover"
-          // If the live cover fails (404/expired), fall back to abstract art.
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = "none";
-          }}
         />
         <AbstractWaveform seed={seed} className="absolute inset-0" />
       </div>

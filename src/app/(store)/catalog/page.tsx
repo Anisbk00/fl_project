@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+import { SORT_OPTIONS } from "@/features/catalog/sort";
 import type { Metadata } from "next";
 import { Container, Section, Grid } from "@/components/site/container";
 import { SectionHeading } from "@/components/site/section-heading";
@@ -152,10 +154,26 @@ export default async function CatalogPage({ searchParams }: PageProps) {
                     </>
                   )}
                 </p>
-                <SortPills
-                  current={params}
-                  hrefFor={(s) => withParam(params, { sort: s, resetPage: true })}
-                />
+                <nav aria-label="Sort results" className="flex flex-wrap items-center gap-1.5">
+                  {SORT_OPTIONS.map((opt) => {
+                    const active = params.sort === opt.value || (opt.value === "newest" && (!params.sort || params.sort === "newest"));
+                    return (
+                      <a
+                        key={opt.value}
+                        href={withParam(params, { sort: opt.value, resetPage: true })}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "rounded-full px-3 py-1.5 t-label transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+                          active
+                            ? "bg-brand text-brand-foreground"
+                            : "bg-surface text-ink-secondary hover:text-ink border border-line",
+                        )}
+                      >
+                        {opt.label}
+                      </a>
+                    );
+                  })}
+                </nav>
               </div>
 
               {active ? <ActiveFilterChips params={params} /> : null}
