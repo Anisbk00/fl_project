@@ -1,39 +1,53 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { ADMIN_LOGIN_PATH } from "@/lib/admin-path";
-import { requireAdminOrRedirect } from "@/lib/auth/require-admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
 import { Container } from "@/components/site/container";
 import { EmptyState } from "@/components/site/state";
 import { LinkButton } from "@/components/site/button";
 
 /**
  * Protected admin sub-tree. Every page under this layout requires an active
- * allow-listed administrator at AAL2. The guard redirects unauthenticated →
- * /admin/login and AAL1 → /admin/mfa/challenge. Renders an honest state when
- * Supabase/Auth is not configured in this environment.
+ * allow-listed administrator at AAL2.
  *
- * All responses are `no-store` (never publicly cached). Verified via headers.
+ * Behavior:
+ *   - Success (AAL2 admin) → render the protected chrome.
+ *   - Unconfigured (no Supabase env vars) → render the honest "Admin isn't
+ *     available here" EmptyState. We do NOT redirect to /login here, because
+ *     the login page itself would also be unconfigured → infinite redirect loop.
+ *   - Unauthenticated / not_admin / aal1_required → call `redirect()`, which
+ *     throws the framework-level NEXT_REDIRECT error. We intentionally do NOT
+ *     wrap this in try/catch — swallowing NEXT_REDIRECT would prevent the
+ *     actual browser redirect and leave the user staring at the EmptyState.
+ *
+ * All responses are `no-store` (never publicly cached).
  */
 export const dynamic = "force-dynamic";
-
-async function isAuthConfigured(): Promise<boolean> {
-  // requireAdmin returns "unconfigured" when Supabase isn't linked.
-  const outcome = await requireAdminOrRedirect({ aal2: true }).catch(
-    () => null,
-  );
-  return outcome !== null;
-}
 
 export default async function ProtectedAdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  let principal;
-  try {
-    principal = await requireAdminOrRedirect({ aal2: true });
-  } catch {
-    // requireAdminOrRedirect redirects on failure (unauthenticated/aal1) OR
-    // throws when unconfigured → render an honest state instead of a loop.
+  const outcome = await requireAdmin({ aal2: true });
+
+  if (outcome.ok) {
+    // Set no-store headers on protected responses.
+    const h = await headers();
+    void h;
+
+    return (
+      <Container as="main" className="py-8">
+        <p className="t-caption text-ink-muted mb-4">
+          Signed in as admin · AAL2 verified · {outcome.principal.uid.slice(0, 8)}…
+        </p>
+        {children}
+      </Container>
+    );
+  }
+
+  if (outcome.reason === "unconfigured") {
+    // Honest state — do NOT redirect (login would loop).
     return (
       <Container as="main" className="py-20">
         <EmptyState
@@ -46,16 +60,10 @@ export default async function ProtectedAdminLayout({
     );
   }
 
-  // Set no-store headers on protected responses.
-  const h = await headers();
-  void h;
-
-  return (
-    <Container as="main" className="py-8">
-      <p className="t-caption text-ink-muted mb-4">
-        Signed in as admin · AAL2 verified · {principal.uid.slice(0, 8)}…
-      </p>
-      {children}
-    </Container>
-  );
+  // unauthenticated / not_admin / aal1_required → redirect (NEXT_REDIRECT
+  // propagates to the framework; NOT caught, so the browser actually follows).
+  if (outcome.redirectTo) {
+    redirect(outcome.redirectTo);
+  }
+  redirect(ADMIN_LOGIN_PATH);
 }
