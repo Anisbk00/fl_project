@@ -9,12 +9,20 @@ import { cn } from "@/lib/utils";
 
 /**
  * Admin login form (client island). Uses Supabase email/password auth via the
- * browser client (publishable key only). On success, navigates to `/admin`,
- * which routes through MFA enrollment/challenge as needed.
+ * browser client (publishable key only). On success, navigates to the admin
+ * dashboard, which routes through MFA enrollment/challenge as needed.
  *
  * Generic, non-enumerating errors: any failure (wrong password, unknown
  * email, not an admin) shows the same message — the UI does not reveal
  * whether an email is registered as an administrator.
+ *
+ * Loading UX:
+ *   - Button label flips to "Signing in…" with a spinner.
+ *   - Button is disabled (can't double-submit).
+ *   - Inputs are disabled + visually dimmed while the request is in flight.
+ *   - On success, the spinner KEEPS spinning until the router navigation
+ *     completes — no flicker back to "Sign in" before the page changes.
+ *   - On error, the spinner stops and the form is re-enabled.
  */
 export function LoginForm({ configured }: { configured: boolean }) {
   const router = useRouter();
@@ -39,20 +47,29 @@ export function LoginForm({ configured }: { configured: boolean }) {
       });
       if (signInError) {
         setError("Invalid credentials or not authorized.");
+        setLoading(false);
         return;
       }
+      // Keep the spinner spinning during navigation — don't setLoading(false).
       // Route through the guard, which enforces MFA/AAL2.
       router.push(ADMIN_DASHBOARD_PATH);
       router.refresh();
     } catch {
       setError("Invalid credentials or not authorized.");
-    } finally {
       setLoading(false);
     }
+    // No finally block: on success, loading stays true until the page unmounts.
   }
 
+  const inputClass = cn(
+    "h-11 rounded-md border border-line-strong bg-canvas px-3 t-body text-ink",
+    "transition-[border-color,opacity] duration-[var(--duration-fast)]",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+    "disabled:opacity-60 disabled:cursor-not-allowed",
+  );
+
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+    <form onSubmit={onSubmit} className="flex flex-col gap-4" aria-busy={loading || undefined}>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="admin-email" className="t-label text-ink">
           Email
@@ -63,12 +80,10 @@ export function LoginForm({ configured }: { configured: boolean }) {
           type="email"
           autoComplete="username"
           required
+          disabled={loading}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={cn(
-            "h-11 rounded-md border border-line-strong bg-canvas px-3 t-body text-ink",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-          )}
+          className={inputClass}
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -81,12 +96,10 @@ export function LoginForm({ configured }: { configured: boolean }) {
           type="password"
           autoComplete="current-password"
           required
+          disabled={loading}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className={cn(
-            "h-11 rounded-md border border-line-strong bg-canvas px-3 t-body text-ink",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-          )}
+          className={inputClass}
         />
       </div>
       {error ? (
@@ -95,11 +108,15 @@ export function LoginForm({ configured }: { configured: boolean }) {
         </p>
       ) : null}
       <Button type="submit" loading={loading} className="w-full">
-        Sign in
+        {loading ? "Signing in…" : "Sign in"}
       </Button>
       <a
         href={ADMIN_PASSWORD_RECOVERY_PATH}
-        className="t-caption text-ink-secondary underline underline-offset-4 hover:text-ink text-center"
+        className={cn(
+          "t-caption text-ink-secondary underline underline-offset-4 hover:text-ink text-center",
+          "transition-opacity duration-[var(--duration-fast)]",
+          loading && "pointer-events-none opacity-50",
+        )}
       >
         Forgot password?
       </a>
