@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ADMIN_NEW_PRODUCT_PATH } from "@/lib/admin-path";
 import { LinkButton } from "@/components/site/button";
 import { Container } from "@/components/site/container";
 import { SectionHeading } from "@/components/site/section-heading";
@@ -12,7 +13,7 @@ export default async function AdminProductsPage() {
     <Container>
       <div className="flex items-center justify-between gap-4">
         <SectionHeading eyebrow="Admin" title="Products" as="h1" />
-        <LinkButton href="/admin/products/new" size="sm">New product</LinkButton>
+        <LinkButton href={ADMIN_NEW_PRODUCT_PATH} size="sm">New product</LinkButton>
       </div>
       <div className="mt-8">
         <EmptyState

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ADMIN_DASHBOARD_PATH, ADMIN_LOGIN_PATH } from "@/lib/admin-path";
 import { getBrowserClient } from "@/lib/supabase/browser-client";
 import { Button } from "@/components/site/button";
 
@@ -47,7 +48,7 @@ export function MfaChallengeForm({ configured }: { configured: boolean }) {
         setError("Invalid code. Try again.");
         return;
       }
-      router.push("/admin");
+      router.push(ADMIN_DASHBOARD_PATH);
       router.refresh();
     } catch {
       setError("Verification failed.");
@@ -80,7 +81,7 @@ export function MfaChallengeForm({ configured }: { configured: boolean }) {
       </Button>
       <button
         type="button"
-        onClick={() => router.push("/admin/login")}
+        onClick={() => router.push(ADMIN_LOGIN_PATH)}
         className="t-caption text-ink-secondary underline underline-offset-4 hover:text-ink"
       >
         Back to login

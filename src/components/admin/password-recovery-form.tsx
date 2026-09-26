@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ADMIN_PASSWORD_RECOVERY_PATH } from "@/lib/admin-path";
 import { getBrowserClient } from "@/lib/supabase/browser-client";
 import { Button } from "@/components/site/button";
 
@@ -16,7 +17,7 @@ export function PasswordRecoveryForm({ configured }: { configured: boolean }) {
     try {
       const client = getBrowserClient();
       const { error: rErr } = await client.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/admin/password-recovery/callback`,
+        redirectTo: `${window.location.origin}${ADMIN_PASSWORD_RECOVERY_PATH}/callback`,
       });
       // Always show the same response (non-enumerating).
       setDone(true);

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { ADMIN_LOGIN_PATH } from "@/lib/admin-path";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { MfaEnrollForm } from "@/components/admin/mfa-enroll-form";
 import { Container } from "@/components/site/container";
@@ -18,7 +19,7 @@ export default async function MfaEnrollPage() {
     if (outcome.reason === "unconfigured") {
       // honest state rendered by the form below
     } else {
-      redirect(outcome.redirectTo ?? "/admin/login");
+      redirect(outcome.redirectTo ?? ADMIN_LOGIN_PATH);
     }
   }
   return (

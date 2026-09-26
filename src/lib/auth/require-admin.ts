@@ -1,5 +1,9 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import {
+  ADMIN_LOGIN_PATH,
+  ADMIN_MFA_CHALLENGE_PATH,
+} from "@/lib/admin-path";
 import { getServerClient } from "@/lib/supabase/server-client";
 import type { AdminPrincipal } from "@/features/admin/aal";
 
@@ -59,13 +63,13 @@ export async function requireAdmin(opts: {
     error,
   } = await client.auth.getUser();
   if (error || !user) {
-    return { ok: false, reason: "unauthenticated", redirectTo: "/admin/login" };
+    return { ok: false, reason: "unauthenticated", redirectTo: ADMIN_LOGIN_PATH };
   }
 
   const { data: isActiveAdmin } = await client.rpc("is_active_admin");
   if (isActiveAdmin !== true) {
     // Generic: covers inactive + non-admin without enumerating.
-    return { ok: false, reason: "not_admin", redirectTo: "/admin/login" };
+    return { ok: false, reason: "not_admin", redirectTo: ADMIN_LOGIN_PATH };
   }
 
   let aal2 = false;
@@ -76,7 +80,7 @@ export async function requireAdmin(opts: {
       return {
         ok: false,
         reason: "aal1_required",
-        redirectTo: "/admin/mfa/challenge",
+        redirectTo: ADMIN_MFA_CHALLENGE_PATH,
       };
     }
   }
@@ -95,7 +99,7 @@ export async function requireAdminOrRedirect(opts: {
   if (outcome.ok) return outcome.principal;
   if (outcome.redirectTo) redirect(outcome.redirectTo);
   // Unconfigured: render an honest state rather than redirect-loop.
-  redirect("/admin/login");
+  redirect(ADMIN_LOGIN_PATH);
 }
 
 /** Action/handler variant: returns the typed outcome (no redirect). */

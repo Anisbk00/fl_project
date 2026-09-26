@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ADMIN_MFA_CHALLENGE_PATH } from "@/lib/admin-path";
 import { getBrowserClient } from "@/lib/supabase/browser-client";
 import { Button } from "@/components/site/button";
 
@@ -84,7 +85,7 @@ export function MfaEnrollForm({ configured }: { configured: boolean }) {
       setTotpUri(null);
       setQr(null);
       // Route through the guard, which now sees AAL2.
-      router.push("/admin/mfa/challenge");
+      router.push(ADMIN_MFA_CHALLENGE_PATH);
       router.refresh();
     } catch {
       setError("Verification failed.");

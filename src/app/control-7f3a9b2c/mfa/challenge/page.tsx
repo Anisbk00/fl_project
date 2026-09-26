@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { ADMIN_LOGIN_PATH } from "@/lib/admin-path";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { MfaChallengeForm } from "@/components/admin/mfa-challenge-form";
 import { Container } from "@/components/site/container";
@@ -15,7 +16,7 @@ export default async function MfaChallengePage() {
   const outcome = await requireAdmin({ aal2: false });
   if (!outcome.ok) {
     if (outcome.reason !== "unconfigured") {
-      redirect(outcome.redirectTo ?? "/admin/login");
+      redirect(outcome.redirectTo ?? ADMIN_LOGIN_PATH);
     }
   }
   return (

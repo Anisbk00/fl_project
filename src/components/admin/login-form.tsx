@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ADMIN_DASHBOARD_PATH, ADMIN_PASSWORD_RECOVERY_PATH } from "@/lib/admin-path";
 import { getBrowserClient } from "@/lib/supabase/browser-client";
 import { Button } from "@/components/site/button";
 import { cn } from "@/lib/utils";
@@ -41,7 +42,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
         return;
       }
       // Route through the guard, which enforces MFA/AAL2.
-      router.push("/admin");
+      router.push(ADMIN_DASHBOARD_PATH);
       router.refresh();
     } catch {
       setError("Invalid credentials or not authorized.");
@@ -97,7 +98,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
         Sign in
       </Button>
       <a
-        href="/admin/password-recovery"
+        href={ADMIN_PASSWORD_RECOVERY_PATH}
         className="t-caption text-ink-secondary underline underline-offset-4 hover:text-ink text-center"
       >
         Forgot password?

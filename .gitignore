@@ -61,3 +61,4 @@ tool-results/
 .env
 .env.local
 .env
+agent-ctx/

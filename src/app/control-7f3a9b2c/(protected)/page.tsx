@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ADMIN_AUDIT_PATH, ADMIN_PRODUCTS_PATH } from "@/lib/admin-path";
 import { logout } from "./actions";
 import { Button, LinkButton } from "@/components/site/button";
 import { Container } from "@/components/site/container";
@@ -40,8 +41,8 @@ export default async function AdminDashboard() {
         <EmptyState title="No audit events available here" description="Audit data loads from a linked Supabase project." />
       </div>
       <div className="mt-8 flex gap-3">
-        <LinkButton href="/admin/products">Manage products</LinkButton>
-        <LinkButton href="/admin/audit" variant="outline">Audit log</LinkButton>
+        <LinkButton href={ADMIN_PRODUCTS_PATH}>Manage products</LinkButton>
+        <LinkButton href={ADMIN_AUDIT_PATH} variant="outline">Audit log</LinkButton>
       </div>
     </Container>
   );

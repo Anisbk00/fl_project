@@ -243,3 +243,18 @@ Stage Summary:
 - The push is unblocked. Vercel will auto-rebuild from commit `f9929bf`. The build will now pass because (a) the `onError` Server-Component bug is fixed on origin, (b) the env-schema empty-string hardening is on origin, and (c) there are no secrets in history to trigger GitHub push protection.
 - IMPORTANT security note for the operator: the Supabase Secret Key that was in git history (`sb_secret_K11...`) should be considered COMPROMISED — it was in a public-facing GitHub repo (even if now scrubbed, it could have been cached/cloned/forked before the scrub). Best practice: rotate the Supabase secret key in the Supabase dashboard → Project Settings → API → "Generate new secret key", then update the `SUPABASE_SECRET_KEY` env var on Vercel (and in `.env.local`) with the new value. This is defense-in-depth — GitHub push protection caught it BEFORE the push landed, so the secret never reached the new origin, but it WAS in the local git history for some time and may have been pushed to other remotes/forks in the past.
 - Next: watch the Vercel redeploy. Once it succeeds, proceed with the Stripe webhook URL update + test card `4242 4242 4242 4242` purchase flow.
+
+---
+Task ID: 13
+Agent: full-stack-developer
+Task: Move admin surface from /admin/* to secret /control-7f3a9b2c/* route.
+
+Work Log:
+- Created src/lib/admin-path.ts with ADMIN_BASE_PATH = "/control-7f3a9b2c" + all sub-path constants.
+- Renamed src/app/admin/ → src/app/control-7f3a9b2c/.
+- Updated all hardcoded "/admin/..." references in N files to use the constants.
+- Verified: lint ✓, typecheck ✓, build ✓. No /admin/* routes in build output.
+
+Stage Summary:
+- Admin login now at the secret URL /control-7f3a9b2c/login — not discoverable by URL scanning.
+- To rotate the secret: edit ADMIN_BASE_PATH in src/lib/admin-path.ts AND rename the folder to match, then redeploy.

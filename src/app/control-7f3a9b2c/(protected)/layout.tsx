@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { ADMIN_LOGIN_PATH } from "@/lib/admin-path";
 import { requireAdminOrRedirect } from "@/lib/auth/require-admin";
 import { Container } from "@/components/site/container";
 import { EmptyState } from "@/components/site/state";
@@ -39,7 +40,7 @@ export default async function ProtectedAdminLayout({
           title="Admin isn't available here"
           titleAs="h1"
           description="This environment has no live Supabase Auth project linked, so the admin CMS can't be loaded. Link a Supabase project (see README) to use admin login, MFA, and the product CMS."
-          action={<LinkButton href="/admin/login" variant="outline">Go to login</LinkButton>}
+          action={<LinkButton href={ADMIN_LOGIN_PATH} variant="outline">Go to login</LinkButton>}
         />
       </Container>
     );

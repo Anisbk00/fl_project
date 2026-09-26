@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { ADMIN_DASHBOARD_PATH } from "@/lib/admin-path";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { LoginForm } from "@/components/admin/login-form";
 import { Container } from "@/components/site/container";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminLoginPage() {
   // Already a verified AAL2 admin → straight to the dashboard.
   const outcome = await requireAdmin({ aal2: true });
-  if (outcome.ok) redirect("/admin");
+  if (outcome.ok) redirect(ADMIN_DASHBOARD_PATH);
 
   return (
     <Container as="main" className="flex min-h-[60dvh] flex-col items-center justify-center py-16">
