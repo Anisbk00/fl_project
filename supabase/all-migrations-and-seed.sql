@@ -2111,7 +2111,7 @@ values
   ('draft-track','Draft Track','Should never be public.','stems','draft','original',900,'USD','FL Studio',128,'A minor'),
   ('archived-pack','Archived Pack','Removed from sale.','sample_pack','archived','licensed',1500,'USD',null,140,'F minor'),
   ('unreviewed-draft','Unreviewed Draft','Awaiting rights review.','remake','draft','unreviewed',1900,'USD','FL Studio',140,'C# minor'),
-  ('rejected-public','Should Be Hidden','Rights rejected.','stems','published','rejected',1900,'USD',null,120,'A minor')
+  ('rejected-public','Should Be Hidden','Rights rejected.','stems','draft','rejected',1900,'USD',null,120,'A minor')
 on conflict (slug) do nothing;
 
 -- Joins ----------------------------------------------------------------------
