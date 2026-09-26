@@ -74,12 +74,16 @@ async function loadDashboard(): Promise<
     ]);
 
     if (draftRes.error || publishedRes.error || archivedRes.error) {
-      // 403 from PostgREST = RLS denial. The admin SELECT policy on products
-      // requires is_active_admin() AND aal2(). Run diagnostics to find which
-      // one is false, so the operator knows exactly what to fix.
-      const diag = await runRlsDiagnostics(client);
+      const firstErr =
+        draftRes.error || publishedRes.error || archivedRes.error;
+      let errDump: string;
+      try {
+        errDump = JSON.stringify(firstErr, null, 2);
+      } catch {
+        errDump = String(firstErr);
+      }
       return {
-        error: `Could not load product counts (HTTP 403 = RLS denial). ${diag}`,
+        error: `Could not load product counts (HTTP ${draftRes.status ?? "?"}). Raw error:\n${errDump}\n\nIf this is a 403, the 'authenticated' role lacks table-level privileges on 'products'. Run the grants block from the latest commit message (or the end of all-migrations-and-seed.sql) in the Supabase SQL Editor.`,
       };
     }
     if (auditRes.error) {
