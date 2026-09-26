@@ -494,7 +494,7 @@ returns table (
   seo_title text, seo_description text, created_at timestamptz, updated_at timestamptz, published_at timestamptz,
   genres jsonb, plugins jsonb, media jsonb
 )
-language plpgsql
+language sql
 security invoker
 set search_path = public
 as $$
@@ -540,7 +540,7 @@ returns table (
   duration_seconds integer, total_size_bytes bigint, included_formats text, featured boolean,
   published_at timestamptz, genres jsonb, plugins jsonb, cover_path text, audio_preview_path text
 )
-language plpgsql
+language sql
 security invoker
 set search_path = public
 as $$
@@ -595,7 +595,7 @@ returns table (
   duration_seconds integer, total_size_bytes bigint, included_formats text, featured boolean,
   published_at timestamptz, genres jsonb, plugins jsonb, cover_path text, audio_preview_path text
 )
-language plpgsql
+language sql
 security invoker
 set search_path = public
 as $$
@@ -692,7 +692,7 @@ values
   ('draft-track','Draft Track','Should never be public.','stems','draft','original',900,'USD','FL Studio',128,'A minor'),
   ('archived-pack','Archived Pack','Removed from sale.','sample_pack','archived','licensed',1500,'USD',null,140,'F minor'),
   ('unreviewed-draft','Unreviewed Draft','Awaiting rights review.','remake','draft','unreviewed',1900,'USD','FL Studio',140,'C# minor'),
-  ('rejected-public','Should Be Hidden','Rights rejected.','stems','published','rejected',1900,'USD',null,120,'A minor')
+  ('rejected-public','Should Be Hidden','Rights rejected.','stems','draft','rejected',1900,'USD',null,120,'A minor')
 on conflict (slug) do nothing;
 
 -- Joins ----------------------------------------------------------------------
