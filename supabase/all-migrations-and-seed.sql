@@ -566,7 +566,7 @@ returns table (
   seo_title text, seo_description text, created_at timestamptz, updated_at timestamptz, published_at timestamptz,
   genres jsonb, plugins jsonb, media jsonb
 )
-language plpgsql
+language sql
 security invoker
 set search_path = public
 as $$
@@ -612,7 +612,7 @@ returns table (
   duration_seconds integer, total_size_bytes bigint, included_formats text, featured boolean,
   published_at timestamptz, genres jsonb, plugins jsonb, cover_path text, audio_preview_path text
 )
-language plpgsql
+language sql
 security invoker
 set search_path = public
 as $$
@@ -667,7 +667,7 @@ returns table (
   duration_seconds integer, total_size_bytes bigint, included_formats text, featured boolean,
   published_at timestamptz, genres jsonb, plugins jsonb, cover_path text, audio_preview_path text
 )
-language plpgsql
+language sql
 security invoker
 set search_path = public
 as $$
