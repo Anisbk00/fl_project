@@ -204,3 +204,20 @@ Work Log:
 Stage Summary:
 - Step 9 preparation complete. Final status: `READY BUT AWAITING OWNER AUTHORIZATION`. Every external gate (production Supabase/Stripe/Resend/Vercel, DNS/TLS, admin provisioning, legal/tax/market review, monitoring, backup/restore drill, real smoke test) requires explicit owner authorization and live infrastructure not available in this sandbox. No mock counted as a live pass. Live charging remains fail-closed.
 - The nine-step roadmap is architecturally complete. Live production release requires explicit owner authorization for provisioning, DNS, Stripe live mode, Resend domain, real smoke test, and launch.
+
+---
+Task ID: 11
+Agent: Z.ai Code (main)
+Task: Fix Vercel production build failure — "Failed to collect page data for /_not-found".
+
+Work Log:
+- Reproduced the Vercel build error locally by running `bun run build` with empty `NEXT_PUBLIC_SITE_URL` / `NEXT_PUBLIC_SITE_NAME` (the Vercel state when an env var is added-but-empty or set in the wrong scope).
+- Captured the real root cause (the user's paste was truncated): `ZodError: NEXT_PUBLIC_SITE_URL must be an absolute URL; NEXT_PUBLIC_SITE_NAME must not be empty`.
+- Root cause: in `src/lib/env/public.ts`, the schema used `.url().default(...)` and `.min(1).default(...)`. Zod's `.default()` only triggers when the input is `undefined` — NOT when it's an empty string `""`. On Vercel, an env var present-but-empty (common misconfiguration: var added with no value, or var set only in the Preview scope while the Production build runs) crashed the eager `.parse()` at module load, which propagated up through the root layout import during `/_not-found` prerender.
+- Fix: added an `emptyToUndefined()` normalizer in `src/lib/env/public.ts` that treats `undefined`, `""`, and whitespace-only strings as "unset" so the safe Zod defaults apply. Applied to all four public env vars (`NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SITE_NAME`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`). Non-empty real config still flows through and is validated normally.
+- Verified: `bun run build` now succeeds with (a) empty-string env vars and (b) completely missing env vars. `/_not-found` and all 14 static pages prerender cleanly.
+- Lint ✓, typecheck ✓. Dev server restarted.
+
+Stage Summary:
+- The Vercel build will no longer crash on partially-configured public env vars. The site will BOOT and render even if NEXT_PUBLIC_* vars are missing/empty (using safe localhost / placeholder defaults) — but for correct production behavior (canonical URLs, OG, sitemap, Supabase reads) the owner MUST still set all four NEXT_PUBLIC_* vars in the Vercel **Production** scope (and Preview scope for preview builds). Server-only vars (SUPABASE_SECRET_KEY, STRIPE_*, etc.) are already resilient via `.or(z.literal(""))`.
+- Action required from owner: ensure ALL env vars from the provided .env are pasted into Vercel in the **Production** scope (and Preview for preview deploys), then redeploy.

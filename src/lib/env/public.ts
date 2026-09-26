@@ -18,6 +18,23 @@ import { z } from "zod";
  * required and validated accordingly.
  */
 
+/**
+ * Normalize a raw env value: treat `undefined`, empty string, and
+ * whitespace-only strings as "unset" (return undefined) so Zod's `.default()`
+ * kicks in. This is the difference between a build that succeeds with safe
+ * fallbacks and a build that CRASHES during prerender when an env var is
+ * present-but-empty — a common Vercel misconfiguration (env var added with no
+ * value, or set in the wrong scope).
+ *
+ * Non-empty strings are returned as-is so real configuration still flows
+ * through and is validated normally.
+ */
+function emptyToUndefined<T>(v: T | undefined): T | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v === "string" && v.trim() === "") return undefined;
+  return v;
+}
+
 export const publicEnvSchema = z.object({
   NEXT_PUBLIC_SITE_URL: z
     .string()
@@ -45,13 +62,19 @@ export type PublicEnv = z.infer<typeof publicEnvSchema>;
 /**
  * Validated, frozen public environment. Safe to import anywhere — including
  * Client Components — because every field is intentionally browser-safe.
+ *
+ * Empty/whitespace env values are normalized to undefined before parsing so
+ * the safe defaults apply (rather than crashing the build prerender).
  */
 export const publicEnv: Readonly<PublicEnv> = Object.freeze(
   publicEnvSchema.parse({
-    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
-    NEXT_PUBLIC_SITE_NAME: process.env.NEXT_PUBLIC_SITE_NAME,
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
+    NEXT_PUBLIC_SITE_URL: emptyToUndefined(process.env.NEXT_PUBLIC_SITE_URL),
+    NEXT_PUBLIC_SITE_NAME: emptyToUndefined(process.env.NEXT_PUBLIC_SITE_NAME),
+    NEXT_PUBLIC_SUPABASE_URL: emptyToUndefined(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+    ),
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: emptyToUndefined(
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    ),
   }),
 );
