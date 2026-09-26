@@ -25,11 +25,17 @@ export default async function MfaEnrollPage() {
   return (
     <Container as="main" className="flex min-h-[60dvh] flex-col items-center justify-center py-16">
       <div className="w-full max-w-sm">
-        <h1 className="t-heading-1 text-ink mb-1">Set up TOTP (MFA)</h1>
-        <p className="t-body-sm text-ink-secondary mb-6">
-          Scan the QR with an authenticator app, then verify a 6-digit code to
-          reach AAL2 and access the CMS.
+        <h1 className="t-heading-1 text-ink mb-1">Set up your authenticator</h1>
+        <p className="t-body-sm text-ink-secondary mb-2">
+          This admin area requires a Time-based One-Time Password (TOTP) from an
+          authenticator app. Click <strong>Start enrollment</strong> below to get
+          a QR code, then:
         </p>
+        <ol className="t-body-sm text-ink-secondary mb-6 flex flex-col gap-1.5 list-decimal pl-5">
+          <li>Open your authenticator app (Google Authenticator, Authy, 1Password, Microsoft Authenticator).</li>
+          <li>Add a new entry by scanning the QR code that appears.</li>
+          <li>Enter the 6-digit code the app generates to verify.</li>
+        </ol>
         <MfaEnrollForm configured={outcome.ok} />
       </div>
     </Container>

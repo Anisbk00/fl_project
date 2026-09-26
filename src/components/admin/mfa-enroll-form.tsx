@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ADMIN_MFA_CHALLENGE_PATH } from "@/lib/admin-path";
 import { getBrowserClient } from "@/lib/supabase/browser-client";
 import { Button } from "@/components/site/button";
+import { cn } from "@/lib/utils";
 
 /**
  * TOTP enrollment (client island). Calls Supabase `auth.mfa.enroll()` to get a
@@ -47,6 +48,7 @@ export function MfaEnrollForm({ configured }: { configured: boolean }) {
       });
       if (enrollError || !data) {
         setError("Could not start enrollment.");
+        setLoading(false);
         return;
       }
       setFactorId(data.id);
@@ -54,9 +56,8 @@ export function MfaEnrollForm({ configured }: { configured: boolean }) {
       setSecret(data.totp.secret);
     } catch {
       setError("Could not start enrollment.");
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }
 
   async function verify(e: React.FormEvent) {
@@ -78,20 +79,22 @@ export function MfaEnrollForm({ configured }: { configured: boolean }) {
       });
       if (verifyRes.error) {
         setError("Invalid code. Try again.");
+        setLoading(false);
         return;
       }
       // Forget the secret from state as far as practical.
       setSecret(null);
       setTotpUri(null);
       setQr(null);
+      // Keep spinner spinning during navigation (no setLoading(false) on success).
       // Route through the guard, which now sees AAL2.
       router.push(ADMIN_MFA_CHALLENGE_PATH);
       router.refresh();
     } catch {
       setError("Verification failed.");
-    } finally {
       setLoading(false);
     }
+    // No finally: on success, spinner stays until navigation completes.
   }
 
   if (!configured) {
@@ -105,8 +108,8 @@ export function MfaEnrollForm({ configured }: { configured: boolean }) {
 
   if (!factorId) {
     return (
-      <Button onClick={enroll} loading={loading}>
-        Start enrollment
+      <Button onClick={enroll} loading={loading} className="w-full">
+        {loading ? "Starting…" : "Start enrollment"}
       </Button>
     );
   }
@@ -134,14 +137,21 @@ export function MfaEnrollForm({ configured }: { configured: boolean }) {
           autoComplete="one-time-code"
           pattern="[0-9]{6}"
           required
+          disabled={loading}
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          className="h-11 rounded-md border border-line-strong bg-canvas px-3 t-body text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+          className={cn(
+            "h-11 rounded-md border border-line-strong bg-canvas px-3 t-body text-ink tracking-widest text-center",
+            "transition-[border-color,opacity] duration-[var(--duration-fast)]",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+            "disabled:opacity-60 disabled:cursor-not-allowed",
+          )}
+          placeholder="000000"
         />
       </div>
       {error ? <p role="alert" className="t-body-sm text-danger">{error}</p> : null}
-      <Button type="submit" loading={loading}>
-        Verify &amp; continue
+      <Button type="submit" loading={loading} className="w-full">
+        {loading ? "Verifying…" : "Verify & continue"}
       </Button>
     </form>
   );
