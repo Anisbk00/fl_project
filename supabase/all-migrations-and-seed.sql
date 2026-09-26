@@ -10,10 +10,29 @@
 -- ============================================================================
 
 -- Enums -----------------------------------------------------------------------
-create type product_type as enum ('project_file', 'remake', 'stems', 'sample_pack');
-create type product_lifecycle as enum ('draft', 'published', 'archived');
-create type rights_status as enum ('unreviewed', 'original', 'licensed', 'rejected');
-create type media_kind as enum ('cover_image', 'audio_preview', 'video_preview');
+-- Postgres has no `CREATE TYPE IF NOT EXISTS`, so wrap each in a DO block
+-- to make the whole file safely re-runnable (idempotent). Re-running this
+-- file on a database that already has these types will skip them.
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'product_type') then
+    create type product_type as enum ('project_file', 'remake', 'stems', 'sample_pack');
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'product_lifecycle') then
+    create type product_lifecycle as enum ('draft', 'published', 'archived');
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'rights_status') then
+    create type rights_status as enum ('unreviewed', 'original', 'licensed', 'rejected');
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_type where typname = 'media_kind') then
+    create type media_kind as enum ('cover_image', 'audio_preview', 'video_preview');
+  end if;
+end $$;
 
 -- Admin allow-list (private) --------------------------------------------------
 -- Keyed by auth.users.id. Never exposed publicly; read only by the
@@ -146,9 +165,11 @@ begin
   return new;
 end;
 $$;
+drop trigger if exists products_touch_updated_at on public.products;
 create trigger products_touch_updated_at
   before update on public.products
   for each row execute function public.touch_updated_at();
+drop trigger if exists product_deliverables_touch_updated_at on public.product_deliverables;
 create trigger product_deliverables_touch_updated_at
   before update on public.product_deliverables
   for each row execute function public.touch_updated_at();
@@ -196,6 +217,7 @@ grant select on public.genres, public.plugins to anon, authenticated;
 
 -- products: anon/authenticated read only published + rights-cleared rows ----
 -- and only public columns (private audit columns are NOT selected by policy).
+drop policy if exists "products_public_select" on public.products;
 create policy "products_public_select" on public.products
   for select to anon, authenticated
   using (
@@ -203,12 +225,14 @@ create policy "products_public_select" on public.products
     and rights_status in ('original','licensed')
   );
 
+drop policy if exists "products_admin_all" on public.products;
 create policy "products_admin_all" on public.products
   for all to authenticated
   using (public.is_admin())
   with check (public.is_admin());
 
 -- product_genres / product_plugins / product_media: only for published rows -
+drop policy if exists "joins_public_select" on public.product_genres;
 create policy "joins_public_select" on public.product_genres
   for select to anon, authenticated
   using (
@@ -219,9 +243,11 @@ create policy "joins_public_select" on public.product_genres
         and p.rights_status in ('original','licensed')
     )
   );
+drop policy if exists "joins_admin_all" on public.product_genres;
 create policy "joins_admin_all" on public.product_genres
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists "plugins_join_public_select" on public.product_plugins;
 create policy "plugins_join_public_select" on public.product_plugins
   for select to anon, authenticated
   using (
@@ -232,9 +258,11 @@ create policy "plugins_join_public_select" on public.product_plugins
         and p.rights_status in ('original','licensed')
     )
   );
+drop policy if exists "plugins_join_admin_all" on public.product_plugins;
 create policy "plugins_join_admin_all" on public.product_plugins
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists "media_public_select" on public.product_media;
 create policy "media_public_select" on public.product_media
   for select to anon, authenticated
   using (
@@ -245,15 +273,18 @@ create policy "media_public_select" on public.product_media
         and p.rights_status in ('original','licensed')
     )
   );
+drop policy if exists "media_admin_all" on public.product_media;
 create policy "media_admin_all" on public.product_media
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- product_deliverables: NEVER readable by anon/authenticated ----------------
+drop policy if exists "deliverables_admin_all" on public.product_deliverables;
 create policy "deliverables_admin_all" on public.product_deliverables
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 -- No SELECT policy for anon/authenticated ⇒ they read nothing.
 
 -- admin_users: NEVER readable by anon/authenticated -------------------------
+drop policy if exists "admin_users_admin_all" on public.admin_users;
 create policy "admin_users_admin_all" on public.admin_users
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 -- No SELECT policy for anon/authenticated ⇒ they read nothing.
@@ -983,12 +1014,14 @@ alter table public.upload_intents   enable row level security;
 alter table public.audit_events    enable row level security;
 
 -- product_rights: only active AAL2 admins (read+write). NEVER public.
+drop policy if exists "rights_admin_all" on public.product_rights;
 create policy "rights_admin_all" on public.product_rights
   for all to authenticated
   using (public.is_active_admin() and public.aal2())
   with check (public.is_active_admin() and public.aal2());
 
 -- upload_intents: only active AAL2 admins. Anon/non-admin: nothing.
+drop policy if exists "intents_admin_all" on public.upload_intents;
 create policy "intents_admin_all" on public.upload_intents
   for all to authenticated
   using (public.is_active_admin() and public.aal2())
@@ -996,6 +1029,7 @@ create policy "intents_admin_all" on public.upload_intents
 
 -- audit_events: append-only. Admins (AAL2) may SELECT. No INSERT/UPDATE/DELETE
 -- via RLS — writes only happen inside the SECURITY DEFINER functions above.
+drop policy if exists "audit_admin_select" on public.audit_events;
 create policy "audit_admin_select" on public.audit_events
   for select to authenticated
   using (public.is_active_admin() and public.aal2());
@@ -1005,9 +1039,11 @@ create policy "audit_admin_select" on public.audit_events
 -- row (so the login/guard can route to enrollment/challenge). Replace the
 -- Step 1 policy.
 drop policy if exists "admin_users_admin_all" on public.admin_users;
+drop policy if exists "admin_users_self_select" on public.admin_users;
 create policy "admin_users_self_select" on public.admin_users
   for select to authenticated
   using (user_id = auth.uid());
+drop policy if exists "admin_users_admin_mutate" on public.admin_users;
 create policy "admin_users_admin_mutate" on public.admin_users
   for all to authenticated
   using (public.is_active_admin() and public.aal2())
@@ -1044,9 +1080,9 @@ begin
 end;
 $$;
 drop trigger if exists audit_no_update on public.audit_events;
-drop trigger if exists audit_no_delete on public.audit_events;
 create trigger audit_no_update before update on public.audit_events
   for each row execute function public.audit_no_update_delete();
+drop trigger if exists audit_no_delete on public.audit_events;
 create trigger audit_no_delete before delete on public.audit_events
   for each row execute function public.audit_no_update_delete();
 -- (Direct INSERT by a client is already blocked because the RLS has no
@@ -1054,6 +1090,7 @@ create trigger audit_no_delete before delete on public.audit_events
 --  which bypass RLS, can insert audit rows.)
 
 -- updated_at triggers for new tables.
+drop trigger if exists product_rights_touch_updated_at on public.product_rights;
 create trigger product_rights_touch_updated_at
   before update on public.product_rights
   for each row execute function public.touch_updated_at();
@@ -1272,21 +1309,27 @@ alter table public.orders                enable row level security;
 alter table public.order_items           enable row level security;
 alter table public.refunds               enable row level security;
 
+drop policy if exists "orders_admin_read" on public.orders;
 create policy "orders_admin_read" on public.orders
   for select to authenticated
   using (public.is_active_admin() and public.aal2());
+drop policy if exists "order_items_admin_read" on public.order_items;
 create policy "order_items_admin_read" on public.order_items
   for select to authenticated
   using (public.is_active_admin() and public.aal2());
+drop policy if exists "refunds_admin_read" on public.refunds;
 create policy "refunds_admin_read" on public.refunds
   for select to authenticated
   using (public.is_active_admin() and public.aal2());
+drop policy if exists "attempts_admin_read" on public.checkout_attempts;
 create policy "attempts_admin_read" on public.checkout_attempts
   for select to authenticated
   using (public.is_active_admin() and public.aal2());
+drop policy if exists "attempt_items_admin_read" on public.checkout_attempt_items;
 create policy "attempt_items_admin_read" on public.checkout_attempt_items
   for select to authenticated
   using (public.is_active_admin() and public.aal2());
+drop policy if exists "webhook_admin_read" on public.webhook_inbox;
 create policy "webhook_admin_read" on public.webhook_inbox
   for select to authenticated
   using (public.is_active_admin() and public.aal2());
@@ -1449,15 +1492,15 @@ begin
 end;
 $$;
 drop trigger if exists order_items_no_update on public.order_items;
-drop trigger if exists order_items_no_delete on public.order_items;
 create trigger order_items_no_update before update on public.order_items
   for each row execute function public.no_update_delete_finalized();
+drop trigger if exists order_items_no_delete on public.order_items;
 create trigger order_items_no_delete before delete on public.order_items
   for each row execute function public.no_update_delete_finalized();
 drop trigger if exists attempt_items_no_update on public.checkout_attempt_items;
-drop trigger if exists attempt_items_no_delete on public.checkout_attempt_items;
 create trigger attempt_items_no_update before update on public.checkout_attempt_items
   for each row execute function public.no_update_delete_finalized();
+drop trigger if exists attempt_items_no_delete on public.checkout_attempt_items;
 create trigger attempt_items_no_delete before delete on public.checkout_attempt_items
   for each row execute function public.no_update_delete_finalized();
 -- ============================================================================
@@ -1670,20 +1713,28 @@ alter table public.fulfillment_outbox       enable row level security;
 alter table public.email_webhook_inbox      enable row level security;
 alter table public.download_url_issuances   enable row level security;
 
+drop policy if exists "fulfillment_gen_admin_read" on public.fulfillment_generations;
 create policy "fulfillment_gen_admin_read" on public.fulfillment_generations
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "fulfillment_ent_admin_read" on public.fulfillment_entitlements;
 create policy "fulfillment_ent_admin_read" on public.fulfillment_entitlements
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "download_tokens_admin_read" on public.download_access_tokens;
 create policy "download_tokens_admin_read" on public.download_access_tokens
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "download_sessions_admin_read" on public.download_access_sessions;
 create policy "download_sessions_admin_read" on public.download_access_sessions
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "delivery_msg_admin_read" on public.delivery_messages;
 create policy "delivery_msg_admin_read" on public.delivery_messages
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "fulfillment_outbox_admin_read" on public.fulfillment_outbox;
 create policy "fulfillment_outbox_admin_read" on public.fulfillment_outbox
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "email_webhook_admin_read" on public.email_webhook_inbox;
 create policy "email_webhook_admin_read" on public.email_webhook_inbox
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "download_issuances_admin_read" on public.download_url_issuances;
 create policy "download_issuances_admin_read" on public.download_url_issuances
   for select to authenticated using (public.is_active_admin() and public.aal2());
 
@@ -1795,9 +1846,9 @@ $$;
 --  Entitlements and issuances need transition updates through trusted functions,
 --  so we protect only generation/message rows from direct client writes.)
 drop trigger if exists fulfillment_gen_no_update on public.fulfillment_generations;
-drop trigger if exists fulfillment_gen_no_delete on public.fulfillment_generations;
 create trigger fulfillment_gen_no_update before update on public.fulfillment_generations
   for each row execute function public.no_fulfillment_update_delete();
+drop trigger if exists fulfillment_gen_no_delete on public.fulfillment_generations;
 create trigger fulfillment_gen_no_delete before delete on public.fulfillment_generations
   for each row execute function public.no_fulfillment_update_delete();
 -- ============================================================================
@@ -1965,29 +2016,40 @@ alter table public.redemption_reservations    enable row level security;
 alter table public.recommendation_pins         enable row level security;
 
 -- Public can read only published reviews (for aggregate display).
+drop policy if exists "reviews_public_select" on public.reviews;
 create policy "reviews_public_select" on public.reviews
   for select to anon, authenticated
   using (state = 'published');
 
 -- AAL2 admin read-only on all new tables.
+drop policy if exists "legal_rev_admin_read" on public.legal_revisions;
 create policy "legal_rev_admin_read" on public.legal_revisions
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "reviews_admin_all" on public.reviews;
 create policy "reviews_admin_all" on public.reviews
   for all to authenticated using (public.is_active_admin() and public.aal2()) with check (public.is_active_admin() and public.aal2());
+drop policy if exists "review_mod_admin_read" on public.review_moderation_events;
 create policy "review_mod_admin_read" on public.review_moderation_events
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "free_acq_admin_read" on public.free_acquisitions;
 create policy "free_acq_admin_read" on public.free_acquisitions
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "marketing_consent_admin_read" on public.marketing_consent_events;
 create policy "marketing_consent_admin_read" on public.marketing_consent_events
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "bundle_ver_admin_read" on public.bundle_versions;
 create policy "bundle_ver_admin_read" on public.bundle_versions
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "price_history_public_select" on public.price_history;
 create policy "price_history_public_select" on public.price_history
   for select to anon, authenticated using (true);
+drop policy if exists "promotions_admin_read" on public.promotions;
 create policy "promotions_admin_read" on public.promotions
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "redemption_admin_read" on public.redemption_reservations;
 create policy "redemption_admin_read" on public.redemption_reservations
   for select to authenticated using (public.is_active_admin() and public.aal2());
+drop policy if exists "recommendation_pins_public_select" on public.recommendation_pins;
 create policy "recommendation_pins_public_select" on public.recommendation_pins
   for select to anon, authenticated using (valid_from is null or valid_from <= now());
 -- ============================================================================
