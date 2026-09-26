@@ -74,12 +74,10 @@ async function loadDashboard(): Promise<
     ]);
 
     if (draftRes.error || publishedRes.error || archivedRes.error) {
+      const firstErr =
+        draftRes.error || publishedRes.error || archivedRes.error;
       return {
-        error: `Could not load product counts: ${
-          draftRes.error?.message ||
-          publishedRes.error?.message ||
-          archivedRes.error?.message
-        }`,
+        error: `Could not load product counts: ${firstErr?.message ?? "(unknown error)"} (code ${firstErr?.code ?? "?"})`,
       };
     }
     if (auditRes.error) {
