@@ -165,9 +165,9 @@ create trigger product_deliverables_touch_updated_at
 -- NEVER from an email or a browser claim.
 create or replace function public.is_admin()
 returns boolean
-language plpgsql
+language sql
 security definer
-set search_path = ''
+set search_path = public
 as $$
   select exists (
     select 1 from public.admin_users
