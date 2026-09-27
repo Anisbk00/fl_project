@@ -402,7 +402,7 @@ export async function deleteProductAction(
     client.from("order_items").select("order_id", { count: "exact", head: true }).eq("product_id", productId),
     client
       .from("checkout_attempt_items")
-      .select("attempt_id, checkout_attempts!inner(state)", { count: "exact", head: true })
+      .select("checkout_attempts!inner(state,expires_at)")
       .eq("product_id", productId)
       .in("checkout_attempts.state", ["creating", "open", "manual_review"]),
   ]);
@@ -415,7 +415,13 @@ export async function deleteProductAction(
       message: "This product has been purchased, so it can't be deleted — buyers still need its files. Archive it instead.",
     };
   }
-  const blocker = deletionBlocker(product.lifecycle, (openCheckouts.count ?? 0) > 0);
+  // Expired attempts can stay "open" if Stripe's expiry event never landed, so
+  // trust expires_at too. manual_review has no expiry — it always blocks.
+  const now = Date.now();
+  const hasOpenCheckout = (openCheckouts.data ?? []).some(({ checkout_attempts: a }) =>
+    a.state === "manual_review" || new Date(a.expires_at).getTime() > now,
+  );
+  const blocker = deletionBlocker(product.lifecycle, hasOpenCheckout);
   if (blocker) return { ok: false, message: blocker };
 
   // Collect stored files before the rows cascade away.

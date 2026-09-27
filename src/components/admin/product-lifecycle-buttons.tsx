@@ -147,6 +147,7 @@ export function ProductLifecycleButtons({
 }
 
 function errorText(state: ActionResult | undefined): string | null {
-  if (!state || state.ok) return null;
-  return state.message ?? "Action failed.";
+  // The initial state is { ok: false } with no message — not a failure.
+  if (!state || state.ok || !state.message) return null;
+  return state.message;
 }
