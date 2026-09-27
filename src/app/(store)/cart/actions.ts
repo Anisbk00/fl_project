@@ -46,7 +46,9 @@ export async function removeFromCartAction(formData: FormData) {
   redirect("/cart");
 }
 
-export async function checkoutAction() {
+export async function checkoutAction(formData: FormData) {
+  // Terms + immediate-delivery consent (EU/UK withdrawal-right waiver for digital content).
+  if (formData.get("consent") !== "on") fail("consent_required");
   if (!(await checkRateLimit(RATE_LIMITS.checkoutCreate, await headers()))) fail("rate_limited");
   let url: string;
   try {

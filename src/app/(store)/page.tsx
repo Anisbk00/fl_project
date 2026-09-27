@@ -44,7 +44,7 @@ const trustPrinciples = [
   {
     icon: Boxes,
     title: "Secure delivery architecture",
-    body: "Paid files live in private storage and will be delivered through a verified, webhook-authoritative flow — currently in progress.",
+    body: "Paid files live in private storage and are delivered by short-lived, secure download links sent by email once payment is verified.",
   },
 ] as const;
 
@@ -55,7 +55,7 @@ const faqPreview = [
   },
   {
     q: "Can I use these in released music?",
-    a: "Each product carries a license summary (draft legal text is under review). In short: original content you can use; remakes are for study.",
+    a: "Yes for original products: royalty-free, including commercial releases. Educational remakes are for study only. Each product page shows its license type.",
   },
   {
     q: "How is delivery secured?",
@@ -248,7 +248,7 @@ export default function HomePage() {
                 Read the mission
               </LinkButton>
               <LinkButton href="/legal/license" variant="ghost">
-                License (draft)
+                Read the license
               </LinkButton>
             </div>
           </div>

@@ -19,11 +19,11 @@ const faqs: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: "Can I use these sounds in released music?",
-    a: "Each product carries a license summary on its page, and full draft license text is at /legal/license (currently under review). In short: original content you can use in your work; educational remakes are provided for study, not as masters to release.",
+    a: "Yes for original products: you can use them royalty-free in your own music, including commercial releases. Educational remakes are for study, not release. Each product page shows its license type; the full terms are at /legal/license.",
   },
   {
     q: "Is delivery secure?",
-    a: "Paid deliverables are stored privately — never on a permanent public URL. The delivery architecture is designed to issue short-lived download links only after a verified payment. That flow is in progress; it is not live yet.",
+    a: "Paid deliverables are stored privately — never on a permanent public URL. After your payment is verified, we email you a secure, time-limited download link. If it expires, you can request a new one from the downloads page.",
   },
   {
     q: "Do I need an account?",
@@ -31,7 +31,7 @@ const faqs: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: "Can I get a refund?",
-    a: "Draft refund policy text is at /legal/refunds and is under review. Statutory consumer rights in your jurisdiction are not waived by anything here.",
+    a: "Because files are delivered instantly, there are no change-of-mind refunds. We do refund faulty, misdescribed or undelivered products, and double charges. Email support within 30 days; details at /legal/refunds.",
   },
   {
     q: "How do I get my files after paying?",

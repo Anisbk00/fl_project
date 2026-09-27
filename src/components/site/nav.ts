@@ -37,7 +37,7 @@ export const footerNav: ReadonlyArray<{ heading: string; items: readonly NavItem
     ],
   },
   {
-    heading: "Legal (drafts)",
+    heading: "Legal",
     items: [
       { label: "License", href: "/legal/license" },
       { label: "Refunds", href: "/legal/refunds" },

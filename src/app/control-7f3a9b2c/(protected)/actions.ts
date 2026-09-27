@@ -25,11 +25,28 @@ import {
   validateFilename,
   type AssetRole,
 } from "@/features/admin/uploads";
+import { invalidateForMutation } from "@/features/admin/cache-invalidation";
 
 const SLUG_REGEX = /^(?!-)[a-z0-9]+(?:-[a-z0-9]+)*(?<!-)$/;
 
 async function adminClient(): Promise<SupabaseClient<Database>> {
   return getServerClient();
+}
+
+/**
+ * Expire the public catalog cache after a committed product change. Without a
+ * lifecycle transition, only published products invalidate (drafts/archived
+ * aren't public). Never throws — the DB change is already committed.
+ */
+async function invalidateCatalog(
+  client: SupabaseClient<Database>,
+  productId: string,
+  transition?: "product.publish" | "product.unpublish" | "product.archive",
+) {
+  const { data } = await client.from("products").select("slug,lifecycle").eq("id", productId).maybeSingle();
+  if (!data) return;
+  if (!transition && data.lifecycle !== "published") return;
+  invalidateForMutation({ kind: transition ?? "product.published_edit", slug: data.slug });
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +229,7 @@ export async function saveProduct(
 
   // Sync taxonomy joins.
   const syncErr = await syncTaxonomyJoins(client, v.id, v.genres, v.plugins);
+  await invalidateCatalog(client, v.id);
   if (syncErr) {
     revalidatePath(ADMIN_PRODUCTS_PATH);
     redirect(`${ADMIN_PRODUCTS_PATH}/${v.id}`);
@@ -261,6 +279,7 @@ export async function publishProductAction(
     };
   }
 
+  await invalidateCatalog(client, productId, "product.publish");
   revalidatePath(ADMIN_PRODUCTS_PATH);
   revalidatePath(`${ADMIN_PRODUCTS_PATH}/${productId}`);
   redirect(`${ADMIN_PRODUCTS_PATH}/${productId}`);
@@ -301,6 +320,7 @@ export async function unpublishProductAction(
     };
   }
 
+  await invalidateCatalog(client, productId, "product.unpublish");
   revalidatePath(ADMIN_PRODUCTS_PATH);
   revalidatePath(`${ADMIN_PRODUCTS_PATH}/${productId}`);
   redirect(`${ADMIN_PRODUCTS_PATH}/${productId}`);
@@ -341,6 +361,7 @@ export async function archiveProductAction(
     };
   }
 
+  await invalidateCatalog(client, productId, "product.archive");
   revalidatePath(ADMIN_PRODUCTS_PATH);
   revalidatePath(`${ADMIN_PRODUCTS_PATH}/${productId}`);
   redirect(`${ADMIN_PRODUCTS_PATH}/${productId}`);
@@ -403,6 +424,7 @@ export async function addGenre(formData: FormData): Promise<ActionResult> {
       message: friendlyPostgresError(error, "create the genre"),
     };
   }
+  invalidateForMutation({ kind: "taxonomy.change" });
   revalidatePath(ADMIN_TAXONOMIES_PATH);
   redirect(ADMIN_TAXONOMIES_PATH);
 }
@@ -435,6 +457,7 @@ export async function addPlugin(formData: FormData): Promise<ActionResult> {
       message: friendlyPostgresError(error, "create the plugin"),
     };
   }
+  invalidateForMutation({ kind: "taxonomy.change" });
   revalidatePath(ADMIN_TAXONOMIES_PATH);
   redirect(ADMIN_TAXONOMIES_PATH);
 }
@@ -468,6 +491,7 @@ export async function deleteGenre(formData: FormData): Promise<ActionResult> {
       message: friendlyPostgresError(error, "delete the genre"),
     };
   }
+  invalidateForMutation({ kind: "taxonomy.change" });
   revalidatePath(ADMIN_TAXONOMIES_PATH);
   redirect(ADMIN_TAXONOMIES_PATH);
 }
@@ -499,6 +523,7 @@ export async function deletePlugin(formData: FormData): Promise<ActionResult> {
       message: friendlyPostgresError(error, "delete the plugin"),
     };
   }
+  invalidateForMutation({ kind: "taxonomy.change" });
   revalidatePath(ADMIN_TAXONOMIES_PATH);
   redirect(ADMIN_TAXONOMIES_PATH);
 }
@@ -657,6 +682,7 @@ export async function registerMedia(
         message: friendlyPostgresError(error, "register the media"),
       };
     }
+    await invalidateCatalog(client, productId);
     revalidatePath(`${ADMIN_PRODUCTS_PATH}/${productId}`);
     return { ok: true };
   }
@@ -716,6 +742,7 @@ export async function registerMedia(
       message: friendlyPostgresError(error, "register the media"),
     };
   }
+  await invalidateCatalog(client, productId);
   revalidatePath(`${ADMIN_PRODUCTS_PATH}/${productId}`);
   return { ok: true };
 }
@@ -766,6 +793,7 @@ export async function updateMediaAltText(
       message: friendlyPostgresError(updateErr, "update the alt text"),
     };
   }
+  await invalidateCatalog(client, row.product_id);
   revalidatePath(`${ADMIN_PRODUCTS_PATH}/${row.product_id}`);
   return { ok: true };
 }
@@ -811,6 +839,7 @@ export async function deleteMedia(mediaId: string): Promise<ActionResult> {
       message: friendlyPostgresError(deleteErr, "delete the media"),
     };
   }
+  await invalidateCatalog(client, row.product_id);
   revalidatePath(`${ADMIN_PRODUCTS_PATH}/${row.product_id}`);
   return row.storage_object_path
     ? removeStorageObject(client, row.bucket, row.storage_object_path)
@@ -1112,9 +1141,9 @@ const PUBLISH_ERROR_LABELS: Record<string, string> = {
   invalid_currency:
     "Currency must be a 3-letter ISO 4217 code before publishing.",
   cover_missing:
-    "A validated cover image is required before publishing. Upload one via the media panel (not yet wired in this v1).",
+    "A validated cover image is required before publishing. Upload one in the Media panel below.",
   private_zip_missing:
-    "A paid product requires at least one validated, active deliverable ZIP. Add one via the deliverables panel (not yet wired in this v1).",
+    "A paid product requires at least one validated, active deliverable ZIP. Upload one in the Deliverables panel below.",
   pending_uploads:
     "There are pending uploads for this product. Finalize or cancel them first.",
 };

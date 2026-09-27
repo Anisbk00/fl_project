@@ -30,6 +30,7 @@ const MESSAGES: Record<string, string> = {
   misconfigured: "Checkout is temporarily unavailable.",
   checkout_unavailable: "Checkout couldn't be started. Please try again in a moment.",
   rate_limited: "Too many requests. Please wait a minute and try again.",
+  consent_required: "Please accept the terms and confirm immediate delivery to continue.",
 };
 
 export default async function CartPage({
@@ -111,7 +112,16 @@ export default async function CartPage({
                 Final price and any applicable tax are confirmed on the secure Stripe payment page.
               </p>
               {currencies.length > 1 ? <p className="mt-3 t-caption text-danger">{MESSAGES.mixed_currency}</p> : null}
-              <form action={checkoutAction} className="mt-5">
+              <form action={checkoutAction} className="mt-5 flex flex-col gap-4">
+                <label className="flex items-start gap-3 t-caption text-ink-secondary">
+                  <input type="checkbox" name="consent" required className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand)]" />
+                  <span>
+                    I agree to the <Link href="/legal/terms" className="underline hover:text-ink">Terms</Link> and{" "}
+                    <Link href="/legal/license" className="underline hover:text-ink">License</Link>, and I request immediate
+                    access to the digital files. I understand I lose my right of withdrawal once delivery begins (see{" "}
+                    <Link href="/legal/refunds" className="underline hover:text-ink">Refunds</Link>).
+                  </span>
+                </label>
                 <Button type="submit" className="w-full" disabled={!canCheckout}>Checkout securely</Button>
               </form>
               <p className="mt-3 t-caption text-ink-muted">

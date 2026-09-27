@@ -230,7 +230,7 @@ function ProductView({
 
               <div className="flex flex-wrap gap-3">
                 <Link href="/legal/license" className="t-body-sm text-brand underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] rounded">
-                  License summary (draft)
+                  Read the full license
                 </Link>
               </div>
             </div>

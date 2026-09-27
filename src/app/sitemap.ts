@@ -6,8 +6,7 @@ import type { CatalogParams } from "@/features/catalog/url-params";
 /**
  * Sitemap — canonical public routes + published product URLs.
  *
- * NEVER includes search/filter URLs, drafts, admin routes, cart, APIs, or draft
- * legal pages (which carry `noindex`). Product `lastModified` comes from the
+ * NEVER includes search/filter URLs, drafts, admin routes, cart, or APIs. Product `lastModified` comes from the
  * truthful `published_at`. With no live Supabase project linked, only the
  * static canonical routes are emitted.
  */
@@ -25,6 +24,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
     { url: `${base}/faq`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
     { url: `${base}/contact`, lastModified: now, changeFrequency: "monthly", priority: 0.4 },
+    ...["terms", "privacy", "refunds", "license"].map((p) => ({
+      url: `${base}/legal/${p}`,
+      lastModified: now,
+      changeFrequency: "yearly" as const,
+      priority: 0.2,
+    })),
   ];
 
   if (!isCatalogReady()) return staticRoutes;

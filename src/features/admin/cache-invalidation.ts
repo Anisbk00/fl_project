@@ -1,8 +1,4 @@
-import { revalidateTag as nextRevalidateTag } from "next/cache";
-
-// Next 16's revalidateTag signature varies across patch versions; cast to the
-// stable single-arg form. The function invalidates a cache tag after a commit.
-const revalidateTag = nextRevalidateTag as unknown as (tag: string) => void;
+import { updateTag } from "next/cache";
 
 /**
  * Cache invalidation (Step 4) — the central mapping from admin mutations to
@@ -53,7 +49,7 @@ export function tagsForMutation(m: CatalogMutation): string[] {
 
 /**
  * Invalidate the affected tags after a committed mutation. Idempotent.
- * Returns the list of tags invalidated (for audit logging). If revalidateTag
+ * Returns the list of tags invalidated (for audit logging). If updateTag
  * throws (platform error), the caller surfaces a retryable warning but must
  * NOT roll back the committed DB change.
  */
@@ -61,7 +57,9 @@ export function invalidateForMutation(m: CatalogMutation): string[] {
   const tags = tagsForMutation(m);
   for (const tag of tags) {
     try {
-      revalidateTag(tag);
+      // updateTag (server actions only) expires immediately, so the admin's
+      // redirect and the next visitor both see the committed change.
+      updateTag(tag);
     } catch {
       // Swallow at this layer; the caller handles operational retry/reporting.
       // The committed DB change is not rolled back.
