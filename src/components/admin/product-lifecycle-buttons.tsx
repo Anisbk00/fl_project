@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useMemo } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { Button } from "@/components/site/button";
 import {
   archiveProductAction,
+  deleteProductAction,
   publishProductAction,
   unpublishProductAction,
 } from "@/app/control-7f3a9b2c/(protected)/actions";
@@ -12,7 +13,7 @@ import { type ActionResult } from "@/lib/admin/product-schema";
 type Lifecycle = "draft" | "published" | "archived";
 
 /**
- * Lifecycle action buttons (Publish / Unpublish / Archive) for a product.
+ * Lifecycle action buttons (Publish / Unpublish / Archive / Delete) for a product.
  *
  * Each button dispatches a transactional RPC Server Action that re-checks AAL2
  * + the expected `row_version` and surfaces a structured error if the readiness
@@ -45,6 +46,12 @@ export function ProductLifecycleButtons({
     [productId, expectedVersion],
   );
 
+  const deleteBind = useMemo(
+    () => deleteProductAction.bind(null, productId, expectedVersion),
+    [productId, expectedVersion],
+  );
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
   const [publishState, publishDispatch, publishPending] = useActionState<
     ActionResult,
     void
@@ -58,7 +65,13 @@ export function ProductLifecycleButtons({
     void
   >(archiveBind, { ok: false });
 
+  const [deleteState, deleteDispatch, deletePending] = useActionState<
+    ActionResult,
+    void
+  >(deleteBind, { ok: false });
+
   const publishErr = errorText(publishState);
+  const deleteErr = errorText(deleteState);
   const unpublishErr = errorText(unpublishState);
   const archiveErr = errorText(archiveState);
 
@@ -68,6 +81,7 @@ export function ProductLifecycleButtons({
   const publishFormAction = (_formData: FormData) => publishDispatch();
   const unpublishFormAction = (_formData: FormData) => unpublishDispatch();
   const archiveFormAction = (_formData: FormData) => archiveDispatch();
+  const deleteFormAction = (_formData: FormData) => deleteDispatch();
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -98,6 +112,22 @@ export function ProductLifecycleButtons({
         </p>
       ) : null}
 
+      {confirmingDelete ? (
+        <form action={deleteFormAction} className="flex items-center gap-2">
+          <span className="t-caption text-danger">Delete permanently?</span>
+          <Button type="submit" size="sm" variant="danger" loading={deletePending}>
+            {deletePending ? "Deleting…" : "Yes, delete"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={deletePending}>
+            Cancel
+          </Button>
+        </form>
+      ) : (
+        <Button size="sm" variant="ghost" className="text-danger" onClick={() => setConfirmingDelete(true)}>
+          Delete
+        </Button>
+      )}
+
       <div className="flex flex-col gap-1 min-w-0">
         {publishErr ? (
           <p role="alert" className="t-caption text-danger">{publishErr}</p>
@@ -107,6 +137,9 @@ export function ProductLifecycleButtons({
         ) : null}
         {archiveErr ? (
           <p role="alert" className="t-caption text-danger">{archiveErr}</p>
+        ) : null}
+        {deleteErr ? (
+          <p role="alert" className="t-caption text-danger">{deleteErr}</p>
         ) : null}
       </div>
     </div>

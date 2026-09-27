@@ -368,6 +368,102 @@ export async function archiveProductAction(
 }
 
 // ---------------------------------------------------------------------------
+// deleteProductAction — permanent delete of a never-sold product.
+//
+// order_items / fulfillment rows reference deliverables WITHOUT foreign keys,
+// and deliverables cascade with the product — so deleting a sold product would
+// silently destroy files buyers paid for. Sold products must be archived.
+// Media/deliverable/taxonomy rows cascade; the products_audit trigger records
+// the delete.
+// ---------------------------------------------------------------------------
+
+export async function deleteProductAction(
+  productId: string,
+  expectedVersion: number,
+): Promise<ActionResult> {
+  const outcome = await requireAdminOrFailure({ aal2: true });
+  if (!outcome.ok) {
+    return { ok: false, message: "Unauthorized — AAL2 required." };
+  }
+
+  const client = await adminClient();
+  const { data: product, error: loadErr } = await client
+    .from("products")
+    .select("id,lifecycle,row_version")
+    .eq("id", productId)
+    .maybeSingle();
+  if (loadErr) return { ok: false, message: friendlyPostgresError(loadErr, "load the product") };
+  if (!product) return { ok: false, message: "The product no longer exists." };
+  if (product.row_version !== expectedVersion) {
+    return { ok: false, message: "Someone else edited this product. Reload the page and try again." };
+  }
+
+  const [sold, openCheckouts] = await Promise.all([
+    client.from("order_items").select("order_id", { count: "exact", head: true }).eq("product_id", productId),
+    client
+      .from("checkout_attempt_items")
+      .select("attempt_id, checkout_attempts!inner(state)", { count: "exact", head: true })
+      .eq("product_id", productId)
+      .in("checkout_attempts.state", ["creating", "open", "manual_review"]),
+  ]);
+  if (sold.error || openCheckouts.error) {
+    return { ok: false, message: "Could not verify the product's order history. Nothing was deleted." };
+  }
+  if ((sold.count ?? 0) > 0) {
+    return {
+      ok: false,
+      message: "This product has been purchased, so it can't be deleted — buyers still need its files. Archive it instead.",
+    };
+  }
+  const blocker = deletionBlocker(product.lifecycle, (openCheckouts.count ?? 0) > 0);
+  if (blocker) return { ok: false, message: blocker };
+
+  // Collect stored files before the rows cascade away.
+  const [media, deliverables] = await Promise.all([
+    client.from("product_media").select("bucket,storage_object_path").eq("product_id", productId),
+    client.from("product_deliverables").select("bucket,storage_object_path").eq("product_id", productId),
+  ]);
+  const files = [...(media.data ?? []), ...(deliverables.data ?? [])].filter(
+    (f): f is { bucket: string; storage_object_path: string } => !!f.storage_object_path,
+  );
+
+  const { data: deleted, error: deleteErr } = await client
+    .from("products")
+    .delete()
+    .eq("id", productId)
+    .eq("row_version", expectedVersion)
+    .select("id");
+  if (deleteErr) return { ok: false, message: friendlyPostgresError(deleteErr, "delete the product") };
+  if (!deleted?.length) {
+    return { ok: false, message: "Someone else edited this product. Reload the page and try again." };
+  }
+
+  // Best-effort storage cleanup; the product is already gone, so don't fail.
+  const byBucket = Map.groupBy(files, (f) => f.bucket);
+  await Promise.all(
+    [...byBucket].map(([bucket, rows]) => client.storage.from(bucket).remove(rows.map((r) => r.storage_object_path))),
+  );
+
+  revalidatePath(ADMIN_PRODUCTS_PATH);
+  redirect(ADMIN_PRODUCTS_PATH);
+}
+
+/**
+ * Business rule: may a never-sold product be deleted in its current state?
+ * Returns a message explaining why not, or null to allow the delete.
+ */
+function deletionBlocker(
+  lifecycle: "draft" | "published" | "archived",
+  hasOpenCheckout: boolean,
+): string | null {
+  if (lifecycle === "published") return "Unpublish or archive this product before deleting it.";
+  if (hasOpenCheckout) {
+    return "Someone is checking out with this product right now. Try again once the checkout finishes or expires (within 24 hours).";
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Taxonomy CRUD
 // ---------------------------------------------------------------------------
 
