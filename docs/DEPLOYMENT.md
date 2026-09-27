@@ -51,7 +51,7 @@ Do these in order. Use **separate** Supabase projects, Stripe modes and webhook 
 2. Set every variable from `.env.example`, **scoped per environment** (Production vs Preview). Generate secrets with `openssl rand -hex 32` (`CART_TOKEN_PEPPER`, `FULFILLMENT_ROOT_KEY_HEX`, `CRON_SECRET`).
 3. `CHECKOUT_ORIGIN_ALLOWLIST` must contain `NEXT_PUBLIC_SITE_URL` exactly, or checkout refuses to start.
 4. Leave `LIVE_CHECKOUT_ENABLED=0` until step 6 passes; live Stripe keys are refused while it is 0.
-5. Cron: `vercel.json` runs `/api/cron/fulfillment-drain` every 5 minutes (retries webhooks and emails). **Sub-daily crons need a Vercel Pro plan**; on Hobby they run once a day, which delays email retries (first sends are unaffected; they happen inline after payment).
+5. Cron: `vercel.json` runs `/api/cron/fulfillment-drain` once a day at 03:00 UTC (retries webhooks and emails). Hobby rejects sub-daily schedules at deploy time; on Pro, switch it to `*/5 * * * *` for faster retries (first sends are unaffected; they happen inline after payment).
 
 ## 5. Domain
 
