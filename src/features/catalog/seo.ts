@@ -23,9 +23,22 @@ export function publicMediaUrl(path?: string | null): string | null {
   if (!path) return null;
   const base = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
   if (!base) return null;
-  // Strip a leading slash to avoid double slashes; the path is bucket/...
+  return `${base}/storage/v1/object/public/${encodeURI(publicObjectPath(path))}`;
+}
+
+/**
+ * Bucket-qualified object path. Admin uploads store paths relative to the
+ * bucket ("products/<id>/..."), seed rows include it ("product-public/...").
+ * Public media always lives in product-public, so prefix it when missing.
+ */
+export function publicObjectPath(path: string): string {
   const clean = path.replace(/^\/+/, "");
-  return `${base}/storage/v1/object/public/${clean}`;
+  return clean.startsWith("product-public/") ? clean : `product-public/${clean}`;
+}
+
+/** Playable URL for a media row: external link, else the public bucket object. */
+export function mediaSrc(m: { externalUrl?: string | null; storageObjectPath?: string | null }): string | null {
+  return m.externalUrl || publicMediaUrl(m.storageObjectPath);
 }
 
 /** Build a public cover URL for a product (live data) or a deterministic fallback. */

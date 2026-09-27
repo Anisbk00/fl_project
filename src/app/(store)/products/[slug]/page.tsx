@@ -27,7 +27,7 @@ import {
 } from "@/features/catalog/view-models";
 import {
   coverUrl,
-  publicMediaUrl,
+  mediaSrc,
   productCanonical,
   breadcrumbJsonLd,
   productJsonLd,
@@ -102,7 +102,10 @@ function ProductView({
   related: Awaited<ReturnType<typeof getRelatedProducts>>;
 }) {
   const cover = coverUrl(product);
-  const audioSrc = publicMediaUrl(product.audioPreviewPath);
+  const audio = product.media.find((m) => m.kind === "audio_preview");
+  const audioSrc = audio ? mediaSrc(audio) : null;
+  const video = product.media.find((m) => m.kind === "video_preview");
+  const videoSrc = video ? mediaSrc(video) : null;
 
   const crumbs = [
     { name: "Home", path: "/" },
@@ -157,6 +160,9 @@ function ProductView({
               ) : (
                 <p className="t-caption text-ink-muted">No audio preview available.</p>
               )}
+              {videoSrc ? (
+                <video src={videoSrc} controls preload="metadata" playsInline className="w-full rounded-xl border border-line bg-canvas" aria-label={`${product.title} video preview`} />
+              ) : null}
             </div>
 
             {/* Summary */}

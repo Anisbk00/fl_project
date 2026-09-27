@@ -10,6 +10,9 @@ import { LinkButton } from "@/components/site/button";
 import { Price } from "@/components/site/price";
 import { ADMIN_PRODUCTS_PATH } from "@/lib/admin-path";
 import { getServerClient } from "@/lib/supabase/server-client";
+import { ProductArtwork } from "@/components/site/product-artwork";
+import { AudioPreview } from "@/components/site/audio-preview";
+import { mediaSrc } from "@/features/catalog/seo";
 
 export const metadata: Metadata = {
   title: "Product preview",
@@ -41,6 +44,8 @@ interface ProductRow {
   published_at: string | null;
 }
 
+interface MediaRow { kind: string; storage_object_path: string | null; external_url: string | null }
+
 interface GenreRow { slug: string; name: string }
 interface PluginRow { slug: string; name: string; vendor: string | null }
 
@@ -70,11 +75,12 @@ export default async function ProductPreviewPage({
   let product: ProductRow | null = null;
   let genres: GenreRow[] = [];
   let plugins: PluginRow[] = [];
+  let media: MediaRow[] = [];
   let loadError: string | null = null;
 
   try {
     const client = await getServerClient();
-    const [p, pg, pp] = await Promise.all([
+    const [p, pg, pp, pm] = await Promise.all([
       client
         .from("products")
         .select("id, slug, title, short_description, long_description, product_type, lifecycle, price, price_currency, compare_at_price, daw_name, daw_version, bpm, musical_key, duration_seconds, total_size_bytes, included_formats, featured, seo_title, seo_description, published_at")
@@ -88,15 +94,22 @@ export default async function ProductPreviewPage({
         .from("product_plugins")
         .select("plugin:plugins(slug, name, vendor)")
         .eq("product_id", id),
+      client
+        .from("product_media")
+        .select("kind, storage_object_path, external_url")
+        .eq("product_id", id)
+        .order("created_at"),
     ]);
     if (p.error) throw new Error(p.error.message);
     if (pg.error) throw new Error(pg.error.message);
     if (pp.error) throw new Error(pp.error.message);
+    if (pm.error) throw new Error(pm.error.message);
     if (!p.data) {
       notFound();
     }
     product = p.data as ProductRow;
     genres = ((pg.data ?? []) as unknown as { genre: GenreRow }[]).map((r) => r.genre).filter(Boolean);
+    media = (pm.data ?? []) as MediaRow[];
     plugins = ((pp.data ?? []) as unknown as { plugin: PluginRow }[]).map((r) => r.plugin).filter(Boolean);
   } catch (e) {
     loadError = e instanceof Error ? e.message : "Could not load the product.";
@@ -117,6 +130,14 @@ export default async function ProductPreviewPage({
     );
   }
 
+  const srcOf = (kind: string) => {
+    const m = media.find((r) => r.kind === kind);
+    return m ? mediaSrc({ externalUrl: m.external_url, storageObjectPath: m.storage_object_path }) : null;
+  };
+  const cover = srcOf("cover_image");
+  const audioSrc = srcOf("audio_preview");
+  const videoSrc = srcOf("video_preview");
+
   const lifecycleTone: "neutral" | "success" | "warning" =
     product.lifecycle === "published" ? "success" : product.lifecycle === "draft" ? "warning" : "neutral";
 
@@ -126,6 +147,15 @@ export default async function ProductPreviewPage({
       <SectionHeading eyebrow="Admin preview" title="Product preview" as="h1" description="A read-only view of how this product appears. This page is noindex and not public." />
       <div className="mt-8 grid gap-8 lg:grid-cols-[2fr_1fr]">
         <article className="flex flex-col gap-4">
+          <ProductArtwork seed={product.slug} coverUrl={cover} label={product.title} className="rounded-xl border border-line" sizes="(min-width: 1024px) 60vw, 100vw" priority />
+          {audioSrc ? (
+            <AudioPreview src={audioSrc} id={`preview-${product.slug}`} label={product.title} variant="full" />
+          ) : (
+            <p className="t-caption text-ink-muted">No audio preview uploaded.</p>
+          )}
+          {videoSrc ? (
+            <video src={videoSrc} controls preload="metadata" playsInline className="w-full rounded-xl border border-line bg-canvas" aria-label={`${product.title} video preview`} />
+          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={lifecycleTone}>{product.lifecycle}</Badge>
             {product.featured ? <Badge tone="brand">Featured</Badge> : null}
