@@ -4,10 +4,8 @@ import { getPublishableClient } from "@/lib/supabase/publishable";
 import { requireAdmin, type AdminClient } from "@/lib/auth";
 import {
   createProductInputSchema,
-  PUBLISHABLE_RIGHTS,
   type CreateProductInput,
   type Lifecycle,
-  type RightsStatus,
 } from "./schema";
 import { assertPublishable } from "./publish-constraint";
 import type { Database } from "@/types/database";
@@ -22,11 +20,11 @@ import type { Database } from "@/types/database";
  * supabase/migrations/0002_rls_and_admin.sql):
  *
  *   anonymous / public visitor:
- *     - may read ONLY published, rights-cleared products and their public
+ *     - may read ONLY published products and their public
  *       taxonomy + public preview media, via the publishable client. RLS
  *       enforces this at the database; the application ALSO filters as
  *       defense-in-depth.
- *     - can NEVER read drafts/archived/unreviewed/rejected products, private
+ *     - can NEVER read drafts/archived products, private
  *       deliverables, admin identities, or private storage paths. RLS blocks
  *       `product_deliverables` and `admin_users` for anon entirely.
  *
@@ -42,9 +40,8 @@ import type { Database } from "@/types/database";
  *     `product_deliverables` and the admin audit columns (`created_by_id`,
  *     `updated_by_id`). Combined with RLS, a public read can never leak a
  *     private relation or admin identity.
- *   - Public reads filter on `lifecycle = 'published'` AND
- *     `rights_status IN ('original','licensed')` (defense-in-depth alongside
- *     the identical RLS policy).
+ *   - Public reads filter on `lifecycle = 'published'` (defense-in-depth
+ *     alongside the identical RLS policy).
  *   - Every mutation accepts an authenticated `adminClient`, calls
  *     `requireAdmin(adminClient)` first, validates input with Zod, then writes
  *     via `adminClient` (RLS permits because is_admin()=true). A protected
@@ -64,7 +61,6 @@ const PUBLIC_PRODUCT_COLUMNS = [
   "long_description",
   "product_type",
   "lifecycle",
-  "rights_status",
   "price",
   "price_currency",
   "compare_at_price",
@@ -124,7 +120,6 @@ export interface PublicProduct {
   long_description: string | null;
   product_type: Database["public"]["Enums"]["product_type"];
   lifecycle: Database["public"]["Enums"]["product_lifecycle"];
-  rights_status: Database["public"]["Enums"]["rights_status"];
   price: number;
   price_currency: string;
   compare_at_price: number | null;
@@ -166,7 +161,6 @@ export async function listPublishedProducts(): Promise<PublicProduct[]> {
     .from("products")
     .select(PUBLIC_PRODUCT_COLUMNS)
     .eq("lifecycle", "published")
-    .in("rights_status", [...PUBLISHABLE_RIGHTS] as RightsStatus[])
     .order("featured", { ascending: false })
     .order("published_at", { ascending: false, nullsFirst: false });
   if (error) {
@@ -183,7 +177,6 @@ export async function getPublishedProductBySlug(
     .from("products")
     .select(PUBLIC_PRODUCT_COLUMNS)
     .eq("lifecycle", "published")
-    .in("rights_status", [...PUBLISHABLE_RIGHTS] as RightsStatus[])
     .eq("slug", slug)
     .maybeSingle();
   if (error) {
@@ -225,7 +218,7 @@ export async function listAllProductsForAdmin(adminClient: AdminClient) {
   const { data, error } = await adminClient
     .from("products")
     .select(
-      "id,slug,title,product_type,lifecycle,rights_status,price,price_currency,featured,created_at,updated_at,published_at,created_by_id,updated_by_id",
+      "id,slug,title,product_type,lifecycle,price,price_currency,featured,created_at,updated_at,published_at,created_by_id,updated_by_id",
     )
     .order("updated_at", { ascending: false });
   if (error) {
@@ -246,15 +239,13 @@ export async function createProduct(
   const input = createProductInputSchema.parse(
     rawInput,
   ) as CreateProductInput;
-  // New products are always created as drafts. Publication is a separate,
-  // rights-gated step.
+  // New products are always created as drafts. Publication is a separate step.
   const row: Database["public"]["Tables"]["products"]["Insert"] = {
     slug: input.slug,
     title: input.title,
     short_description: input.shortDescription,
     long_description: input.longDescription ?? null,
     product_type: input.productType,
-    rights_status: input.rightsStatus,
     price: input.price,
     price_currency: input.priceCurrency,
     compare_at_price: input.compareAtPrice ?? null,
@@ -289,7 +280,7 @@ export async function publishProduct(
   await requireAdmin(adminClient);
   const { data: product, error: fe } = await adminClient
     .from("products")
-    .select("rights_status,price,price_currency,title,short_description,product_type")
+    .select("price,price_currency,title,short_description,product_type")
     .eq("id", productId)
     .maybeSingle();
   if (fe) {
@@ -298,9 +289,8 @@ export async function publishProduct(
   if (!product) {
     throw new Error("Product not found.");
   }
-  // Engineering guardrail: refuse to publish unless rights-cleared and valid.
+  // Engineering guardrail: refuse to publish unless valid.
   assertPublishable({
-    rightsStatus: product.rights_status,
     price: product.price,
     priceCurrency: product.price_currency,
     title: product.title,

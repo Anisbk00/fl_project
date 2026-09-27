@@ -223,7 +223,6 @@ function ProductView({
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <Badge tone="neutral">Rights: {productSlugRightsLabel(product)}</Badge>
                 <Link href="/legal/license" className="t-body-sm text-brand underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] rounded">
                   License summary (draft)
                 </Link>
@@ -260,11 +259,6 @@ function ProductView({
       ) : null}
     </>
   );
-}
-
-function productSlugRightsLabel(p: ProductDetailVM): string {
-  // The stored rights status; never claim clearance beyond it.
-  return p.free ? "original (free)" : "original or licensed";
 }
 
 function formatDate(iso: string): string {

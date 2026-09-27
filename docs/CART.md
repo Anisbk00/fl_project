@@ -27,7 +27,7 @@ through possession of a high-entropy HttpOnly cookie.
 - Max items = 20; Stripe amount boundaries enforced.
 
 ## Product validation (server)
-Reject free / draft / archived / rights-blocked / missing-validated-deliverable
+Reject free / draft / archived / missing-validated-deliverable
 / invalid-zero-negative-overflowing price / unsupported currency / cross-currency
 carts (`validation-gates.ts`). Show changed-price/unavailable + require review
 before Checkout. Keep the cart after cancel/failed/expired Checkout; mark

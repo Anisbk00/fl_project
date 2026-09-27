@@ -5,12 +5,6 @@ import {
 } from "@/features/admin/readiness";
 
 const base: ReadinessInput = {
-  rightsStatus: "original",
-  rightsAttested: true,
-  rightsReviewedAt: "2026-09-18T00:00:00Z",
-  licensedSourceType: null,
-  licensedEvidenceRef: null,
-  licenseExpiresAt: null,
   title: "Vector Drift",
   shortDescription: "Original project.",
   price: 2400,
@@ -26,47 +20,6 @@ describe("publish-readiness gate", () => {
     const r = checkPublishReadiness(base);
     expect(r.ok).toBe(true);
     expect(r.errors).toEqual([]);
-  });
-
-  it("fails when rights are not cleared", () => {
-    const r = checkPublishReadiness({ ...base, rightsStatus: "unreviewed" });
-    expect(r.ok).toBe(false);
-    expect(r.errors).toContain("rights_not_cleared");
-  });
-
-  it("fails without a rights attestation", () => {
-    const r = checkPublishReadiness({ ...base, rightsAttested: false, rightsReviewedAt: null });
-    expect(r.errors).toContain("rights_not_attested");
-  });
-
-  it("requires licensed evidence", () => {
-    const r = checkPublishReadiness({
-      ...base,
-      rightsStatus: "licensed",
-      licensedSourceType: null,
-      licensedEvidenceRef: null,
-    });
-    expect(r.errors).toContain("licensed_evidence_missing");
-  });
-  it("passes licensed with evidence", () => {
-    const r = checkPublishReadiness({
-      ...base,
-      rightsStatus: "licensed",
-      licensedSourceType: "contract",
-      licensedEvidenceRef: "lic-123",
-    });
-    expect(r.ok).toBe(true);
-  });
-
-  it("fails on expired license", () => {
-    const r = checkPublishReadiness({
-      ...base,
-      rightsStatus: "licensed",
-      licensedSourceType: "contract",
-      licensedEvidenceRef: "lic-123",
-      licenseExpiresAt: "2020-01-01T00:00:00Z",
-    });
-    expect(r.errors).toContain("license_expired");
   });
 
   it("fails on missing title/summary/invalid price/currency", () => {

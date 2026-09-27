@@ -46,8 +46,8 @@ Access model (every table has RLS enabled):
 
 | Data | Anonymous | Signed-in non-admin | Admin (active + AAL2) | Server (secret key) |
 | --- | --- | --- | --- | --- |
-| Published, rights-cleared products, media, taxonomy | read | read | read/write | — |
-| Drafts, deliverables, rights evidence, uploads | none | none | read/write | read |
+| Published products, media, taxonomy | read | read | read/write | — |
+| Drafts, deliverables, uploads | none | none | read/write | read |
 | Orders, entitlements, emails, webhooks, refunds | none | none | **read only** | read/write |
 | Carts, access tokens, sessions, rate limits | none | none | none | read/write |
 | `mark_order_paid`, `revoke_fulfillment`, `rate_limit_hit` | none | none | none | execute |
@@ -60,4 +60,4 @@ See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for the step-by-step Supabase �
 
 ## Legal
 
-The store only publishes products marked `original` or `licensed` with a recorded rights review; the database refuses anything else. Legal pages under `/legal/*` are drafts marked `[Draft]`: have them reviewed for your jurisdiction before taking live payments.
+The database refuses to publish a product without a title, summary, valid price, cover and ZIP. Legal pages under `/legal/*` are drafts marked `[Draft]`: have them reviewed for your jurisdiction before taking live payments.

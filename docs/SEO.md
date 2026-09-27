@@ -40,7 +40,7 @@ fake ratings. See `src/features/catalog/seo.ts`, `src/app/sitemap.ts`,
 
 - `src/app/sitemap.ts` emits canonical public routes
   (`/`, `/catalog`, `/free`, `/about`, `/faq`, `/contact`) + published
-  rights-cleared product URLs with truthful `lastModified` from `published_at`.
+  product URLs with truthful `lastModified` from `published_at`.
   It NEVER includes search/filter URLs, drafts, admin routes, cart, APIs, or
   draft legal pages. Pages through the catalog; a multi-sitemap index is a
   Step 8 concern for very large catalogs.

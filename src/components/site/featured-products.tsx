@@ -8,7 +8,7 @@ import {
 } from "@/features/catalog/repository";
 
 /**
- * Featured resources — live data (newest published rights-cleared products).
+ * Featured resources — live data (newest published products).
  * Renders an honest empty/error state when Supabase is not linked or the read
  * fails. Never a fixture fallback on a production page.
  */

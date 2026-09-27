@@ -4,7 +4,7 @@ import { siteUrl } from "@/features/catalog/seo";
 import type { CatalogParams } from "@/features/catalog/url-params";
 
 /**
- * Sitemap — canonical public routes + published rights-cleared product URLs.
+ * Sitemap — canonical public routes + published product URLs.
  *
  * NEVER includes search/filter URLs, drafts, admin routes, cart, APIs, or draft
  * legal pages (which carry `noindex`). Product `lastModified` comes from the

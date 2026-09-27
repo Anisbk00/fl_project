@@ -6,7 +6,6 @@ import {
   listPublishedProducts,
   getPublishedProductBySlug,
 } from "@/features/catalog";
-import { PUBLISHABLE_RIGHTS } from "@/features/catalog/schema";
 
 /**
  * Supabase RLS access-matrix integration test.
@@ -56,11 +55,10 @@ describe.skipIf(!isConfigured)(
       expect(data).toEqual([]);
     });
 
-    it("returns only published + rights-cleared products to anon", async () => {
+    it("returns only published products to anon", async () => {
       const list = await listPublishedProducts();
       for (const p of list) {
         expect(p.lifecycle).toBe("published");
-        expect(PUBLISHABLE_RIGHTS).toContain(p.rights_status);
       }
     });
 

@@ -6,25 +6,23 @@
 -- ============================================================================
 
 begin;
-  select plan(15);
+  select plan(14);
 
   -- Fixtures (as the table owner; satisfy every CHECK constraint).
-  insert into public.products (id, slug, title, short_description, product_type, lifecycle, rights_status, price, price_currency, published_at)
+  insert into public.products (id, slug, title, short_description, product_type, lifecycle, price, price_currency, published_at)
   values
-    ('10000000-0000-4000-8000-000000000001','t-pub','Pub','d','stems','published','original',1500,'USD',now()),
-    ('10000000-0000-4000-8000-000000000002','t-draft','Draft','d','stems','draft','original',1500,'USD',null),
-    ('10000000-0000-4000-8000-000000000003','t-unreviewed','Unrev','d','stems','draft','unreviewed',1500,'USD',null);
+    ('10000000-0000-4000-8000-000000000001','t-pub','Pub','d','stems','published',1500,'USD',now()),
+    ('10000000-0000-4000-8000-000000000002','t-draft','Draft','d','stems','draft',1500,'USD',null),
+    ('10000000-0000-4000-8000-000000000003','t-unreviewed','Unrev','d','stems','draft',1500,'USD',null);
   insert into public.product_deliverables (id, product_id, storage_object_path, customer_filename, mime_type, bytes)
   values ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','products/x/v1/a.zip','a.zip','application/zip',10);
 
   -- --- anon: public catalog only -------------------------------------------
   set local role anon;
   select is((select count(*) from public.products where slug like 't-%'), 1::bigint,
-    'anon sees only the published, rights-cleared product');
+    'anon sees only the published product');
   select throws_ok($$ select 1 from public.product_deliverables $$, '42501', null,
     'anon has no privilege on private deliverables');
-  select throws_ok($$ select 1 from public.product_rights $$, '42501', null,
-    'anon has no privilege on private rights evidence');
   select throws_ok($$ select 1 from public.orders $$, '42501', null,
     'anon has no privilege on orders');
   select throws_ok($$ select 1 from public.download_access_tokens $$, '42501', null,

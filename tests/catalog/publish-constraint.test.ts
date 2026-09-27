@@ -2,7 +2,6 @@ import { describe, it, expect } from "bun:test";
 import { assertPublishable, canPublish, PublicationError } from "@/features/catalog/publish-constraint";
 
 const valid = {
-  rightsStatus: "original",
   price: 1900,
   priceCurrency: "USD",
   title: "Nebula Drift",
@@ -11,18 +10,9 @@ const valid = {
 };
 
 describe("canPublish", () => {
-  it("returns true for a rights-cleared, valid product", () => {
+  it("returns true for a valid product", () => {
     expect(canPublish(valid)).toBe(true);
-    expect(canPublish({ ...valid, rightsStatus: "licensed" })).toBe(true);
     expect(canPublish({ ...valid, price: 0 })).toBe(true);
-  });
-
-  it("returns false when rights are unreviewed", () => {
-    expect(canPublish({ ...valid, rightsStatus: "unreviewed" })).toBe(false);
-  });
-
-  it("returns false when rights are rejected", () => {
-    expect(canPublish({ ...valid, rightsStatus: "rejected" })).toBe(false);
   });
 
   it("returns false when price is negative", () => {
@@ -43,17 +33,8 @@ describe("canPublish", () => {
 });
 
 describe("assertPublishable", () => {
-  it("passes for a rights-cleared product", () => {
+  it("passes for a valid product", () => {
     expect(() => assertPublishable(valid)).not.toThrow();
-  });
-
-  it("throws PublicationError for an unreviewed product", () => {
-    expect(() =>
-      assertPublishable({ ...valid, rightsStatus: "unreviewed" }),
-    ).toThrow(PublicationError);
-    expect(() =>
-      assertPublishable({ ...valid, rightsStatus: "unreviewed" }),
-    ).toThrow(/rights status/);
   });
 
   it("throws PublicationError for an invalid price", () => {

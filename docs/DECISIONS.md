@@ -110,7 +110,7 @@ is protection.
 ## ADR-009 — RLS is the real access boundary; the application layer is defense-in-depth
 
 **Decision:** Row-Level Security in Supabase Postgres IS the access matrix
-(anon sees only published + rights-cleared rows; `product_deliverables` and
+(anon sees only published rows; `product_deliverables` and
 `admin_users` are denied to anon entirely; admin mutations are permitted only
 when `is_admin()` returns true). The application data-access layer applies the
 identical filter as defense-in-depth, but is never relied upon as the sole

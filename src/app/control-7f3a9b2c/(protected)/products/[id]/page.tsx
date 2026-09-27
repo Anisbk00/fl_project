@@ -53,7 +53,6 @@ interface ProductDetailRow {
   long_description: string | null;
   product_type: Database["public"]["Enums"]["product_type"];
   lifecycle: Database["public"]["Enums"]["product_lifecycle"];
-  rights_status: Database["public"]["Enums"]["rights_status"];
   price: number;
   price_currency: string;
   compare_at_price: number | null;
@@ -102,7 +101,7 @@ async function loadEditData(id: string) {
       client
         .from("products")
         .select(
-          "id,slug,title,short_description,long_description,product_type,lifecycle,rights_status,price,price_currency,compare_at_price,daw_name,daw_version,bpm,musical_key,duration_seconds,total_size_bytes,included_formats,featured,seo_title,seo_description,row_version,published_at,created_at,updated_at",
+          "id,slug,title,short_description,long_description,product_type,lifecycle,price,price_currency,compare_at_price,daw_name,daw_version,bpm,musical_key,duration_seconds,total_size_bytes,included_formats,featured,seo_title,seo_description,row_version,published_at,created_at,updated_at",
         )
         .eq("id", id)
         .maybeSingle(),
@@ -223,7 +222,6 @@ export default async function ProductEditorPage({ params }: PageProps) {
     shortDescription: product.short_description,
     longDescription: product.long_description ?? "",
     productType: product.product_type,
-    rightsStatus: product.rights_status,
     price: product.price,
     priceCurrency: product.price_currency,
     compareAtPrice: product.compare_at_price,
@@ -245,21 +243,13 @@ export default async function ProductEditorPage({ params }: PageProps) {
     })),
   };
 
-  // Lifecycle / rights summary badges + lifecycle action buttons.
+  // Lifecycle summary badge + lifecycle action buttons.
   const lifecycleBadge =
     product.lifecycle === "published"
       ? <Badge tone="success">Published</Badge>
       : product.lifecycle === "archived"
         ? <Badge tone="neutral">Archived</Badge>
         : <Badge tone="warning">Draft</Badge>;
-  const rightsBadge =
-    product.rights_status === "original"
-      ? <Badge tone="brand">Original</Badge>
-      : product.rights_status === "licensed"
-        ? <Badge tone="brand">Licensed</Badge>
-        : product.rights_status === "rejected"
-          ? <Badge tone="danger">Rejected</Badge>
-          : <Badge tone="neutral">Unreviewed</Badge>;
 
   return (
     <Container>
@@ -280,7 +270,6 @@ export default async function ProductEditorPage({ params }: PageProps) {
         />
         <div className="flex flex-wrap items-center gap-2">
           {lifecycleBadge}
-          {rightsBadge}
           {product.featured ? <Badge tone="brand">Featured</Badge> : null}
         </div>
       </div>

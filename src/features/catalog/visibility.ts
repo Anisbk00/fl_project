@@ -1,34 +1,20 @@
-import type { Lifecycle, RightsStatus } from "./schema";
+import type { Lifecycle } from "./schema";
 
 /**
- * The public visibility rule.
- *
- * A product is visible to anonymous/public visitors ONLY when ALL of these
- * hold:
- *   - lifecycle === "published"
- *   - rightsStatus is "original" or "licensed" (rights-cleared)
- *
- * Draft, archived, unreviewed, and rejected products are NEVER public.
- *
- * In production this rule is enforced by Supabase RLS policies. In this
- * sandbox (SQLite, no RLS) it is enforced HERE, by the data-access layer,
- * for every public read path. The pure function is unit-tested directly so
- * the rule cannot silently regress.
+ * The public visibility rule: a product is visible to anonymous/public
+ * visitors ONLY when lifecycle === "published". Draft and archived products
+ * are NEVER public. Enforced by Supabase RLS in production and here for
+ * every public read path.
  */
 
 export interface VisibilityCheckable {
   lifecycle: Lifecycle | string;
-  rightsStatus: RightsStatus | string;
 }
 
 export function isPubliclyVisible(
   product: VisibilityCheckable,
 ): boolean {
-  return (
-    product.lifecycle === "published" &&
-    (product.rightsStatus === "original" ||
-      product.rightsStatus === "licensed")
-  );
+  return product.lifecycle === "published";
 }
 
 export function filterPublic<T extends VisibilityCheckable>(

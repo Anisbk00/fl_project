@@ -7,10 +7,10 @@ import type { Database } from "@/types/database";
  * Publishable Supabase client (anon/publishable role), typed against the
  * catalog `Database`.
  *
- * Purpose: server-side reads of PUBLIC, rights-cleared catalog data that is
+ * Purpose: server-side reads of PUBLIC catalog data that is
  * protected by Row-Level Security. The publishable key is safe to use here
  * because RLS — not the key — is the real access boundary. RLS must allow this
- * client to read ONLY published + rights-cleared products, public taxonomy,
+ * client to read ONLY published products, public taxonomy,
  * and public preview media; it must NEVER be able to read drafts, private
  * deliverables, or admin identities (see supabase/migrations/0002_rls_and_admin.sql).
  *

@@ -48,12 +48,9 @@ export {
 export {
   PRODUCT_TYPES,
   LIFECYCLES,
-  RIGHTS_STATUSES,
-  PUBLISHABLE_RIGHTS,
   createProductInputSchema,
   productTypeSchema,
   lifecycleSchema,
-  rightsStatusSchema,
   slugSchema,
   currencySchema,
   bpmSchema,
@@ -61,7 +58,6 @@ export {
   mediaKindSchema,
   type ProductType,
   type Lifecycle,
-  type RightsStatus,
   type CreateProductInput,
 } from "./schema";
 

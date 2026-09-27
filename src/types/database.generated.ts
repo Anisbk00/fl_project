@@ -1153,56 +1153,6 @@ export type Database = {
           },
         ]
       }
-      product_rights: {
-        Row: {
-          created_at: string
-          evidence_ref: string | null
-          internal_notes: string | null
-          license_expires_at: string | null
-          product_id: string
-          restrictions: string | null
-          reviewed_at: string | null
-          reviewer_uid: string | null
-          rights_status: Database["public"]["Enums"]["rights_status"]
-          source_type: string | null
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          evidence_ref?: string | null
-          internal_notes?: string | null
-          license_expires_at?: string | null
-          product_id: string
-          restrictions?: string | null
-          reviewed_at?: string | null
-          reviewer_uid?: string | null
-          rights_status?: Database["public"]["Enums"]["rights_status"]
-          source_type?: string | null
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          evidence_ref?: string | null
-          internal_notes?: string | null
-          license_expires_at?: string | null
-          product_id?: string
-          restrictions?: string | null
-          reviewed_at?: string | null
-          reviewer_uid?: string | null
-          rights_status?: Database["public"]["Enums"]["rights_status"]
-          source_type?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "product_rights_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: true
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       products: {
         Row: {
           bpm: number | null
@@ -1222,7 +1172,6 @@ export type Database = {
           price_currency: string
           product_type: Database["public"]["Enums"]["product_type"]
           published_at: string | null
-          rights_status: Database["public"]["Enums"]["rights_status"]
           row_version: number
           search_vector: unknown
           seo_description: string | null
@@ -1252,7 +1201,6 @@ export type Database = {
           price_currency?: string
           product_type: Database["public"]["Enums"]["product_type"]
           published_at?: string | null
-          rights_status?: Database["public"]["Enums"]["rights_status"]
           row_version?: number
           search_vector?: unknown
           seo_description?: string | null
@@ -1282,7 +1230,6 @@ export type Database = {
           price_currency?: string
           product_type?: Database["public"]["Enums"]["product_type"]
           published_at?: string | null
-          rights_status?: Database["public"]["Enums"]["rights_status"]
           row_version?: number
           search_vector?: unknown
           seo_description?: string | null
@@ -1527,7 +1474,6 @@ export type Database = {
           price_currency: string
           product_type: Database["public"]["Enums"]["product_type"]
           published_at: string
-          rights_status: Database["public"]["Enums"]["rights_status"]
           seo_description: string
           seo_title: string
           short_description: string
@@ -1669,7 +1615,6 @@ export type Database = {
           price_currency: string
           product_type: Database["public"]["Enums"]["product_type"]
           published_at: string
-          rights_status: Database["public"]["Enums"]["rights_status"]
           seo_description: string
           seo_title: string
           short_description: string
@@ -1692,7 +1637,6 @@ export type Database = {
       media_kind: "cover_image" | "audio_preview" | "video_preview"
       product_lifecycle: "draft" | "published" | "archived"
       product_type: "project_file" | "remake" | "stems" | "sample_pack"
-      rights_status: "unreviewed" | "original" | "licensed" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1823,7 +1767,6 @@ export const Constants = {
       media_kind: ["cover_image", "audio_preview", "video_preview"],
       product_lifecycle: ["draft", "published", "archived"],
       product_type: ["project_file", "remake", "stems", "sample_pack"],
-      rights_status: ["unreviewed", "original", "licensed", "rejected"],
     },
   },
 } as const

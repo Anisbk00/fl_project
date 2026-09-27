@@ -74,7 +74,7 @@ export default async function NewProductPage() {
           eyebrow="Admin"
           title="New product"
           as="h1"
-          description="Create a draft. Publication requires rights attestation + validated assets (enforced by the transactional publish_product RPC)."
+          description="Create a draft. Publication requires validated assets (enforced by the transactional publish_product RPC)."
         />
         <div className="mt-8">
           <ErrorState
@@ -97,7 +97,6 @@ export default async function NewProductPage() {
     shortDescription: "",
     longDescription: "",
     productType: "project_file",
-    rightsStatus: "unreviewed",
     price: 0,
     priceCurrency: "USD",
     compareAtPrice: null,
@@ -123,12 +122,12 @@ export default async function NewProductPage() {
         eyebrow="Admin"
         title="New product"
         as="h1"
-        description="Create a draft. Publication requires rights attestation + validated assets (enforced by the transactional publish_product RPC)."
+        description="Create a draft. Publication requires validated assets (enforced by the transactional publish_product RPC)."
       />
       <p className="t-body-sm text-ink-secondary mt-6 max-w-2xl">
         Server-side validation is authoritative — the client checks improve UX
-        only. Slug, slug uniqueness, price (integer minor currency units), and
-        the rights status all mirror the database CHECK constraints.
+        only. Slug, slug uniqueness, and price (integer minor currency units)
+        mirror the database CHECK constraints.
       </p>
       <div className="mt-8">
         <ProductForm

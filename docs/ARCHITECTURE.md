@@ -56,7 +56,7 @@ src/
     catalog/              # the ONLY sanctioned catalog data-access path
       data-access.ts      # public reads + admin writes (access matrix)
       visibility.ts       # pure public-visibility rule (unit-tested)
-      publish-constraint.ts # rights-cleared-before-publish guardrail
+      publish-constraint.ts # publish guardrail (price/currency/metadata)
       schema.ts           # Zod trust-boundary schemas (product types, etc.)
       index.ts            # barrel
   lib/
@@ -106,8 +106,7 @@ tables. It implements the access matrix:
   columns (`created_by_id`, `updated_by_id`). RLS additionally blocks
   `product_deliverables` and `admin_users` for anon entirely. Defense in
   depth: a public read can never leak a private relation.
-- **Public reads** filter on `lifecycle = 'published'` AND `rights_status IN
-  ('original','licensed')`, matching the identical RLS policy.
+- **Public reads** filter on `lifecycle = 'published'`, matching the identical RLS policy.
 - **Every mutation** accepts an authenticated `adminClient`, calls
   `requireAdmin(adminClient)` (the `is_admin()` RPC) first, validates input
   with Zod, then writes via `adminClient` — RLS permits because `is_admin()`
@@ -150,7 +149,7 @@ stable.
 Measurable launch budgets will be set for Core Web Vitals, JavaScript weight,
 images, and audio. Indexes are added only to match real queries:
 
-- `products(lifecycle, rights_status, published_at DESC)` — the public listing.
+- `products(lifecycle, published_at DESC)` — the public listing.
 - `products(slug)` — slug lookup (also the unique constraint).
 - `products(featured, lifecycle)` — featured surfaced products.
 - `product_media(product_id, kind)` — media per product.

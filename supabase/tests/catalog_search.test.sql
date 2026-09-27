@@ -13,11 +13,11 @@ begin;
 
   set role anon;
 
-  -- 1. search_products() returns only published + rights-cleared products.
+  -- 1. search_products() returns only published products.
   select is(
     (select count(*) from public.search_products()),
     6::bigint,
-    'anon search_products returns exactly the published + rights-cleared products'
+    'anon search_products returns exactly the published products'
   );
 
   -- 2. search_products() never returns hidden slugs.
@@ -46,7 +46,7 @@ begin;
   select is(
     (select slug from public.get_product_by_slug('vector-drift')),
     'vector-drift',
-    'anon get_product_by_slug returns a published rights-cleared product'
+    'anon get_product_by_slug returns a published product'
   );
 
   -- 6. get_product_by_slug() returns NULL for hidden slugs (nondisclosing).

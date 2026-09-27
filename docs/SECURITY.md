@@ -9,7 +9,7 @@ and the future payment/download security requirements.
 | Asset | Sensitivity | Where it lives |
 | --- | --- | --- |
 | Admin allow-list (`admin_users`) | High — reveals admin identities | Supabase Postgres; RLS blocks anon/authenticated reads entirely (only `is_admin()` SECURITY DEFINER consults it). |
-| Catalog metadata (products, genres, plugins) | Public when published + rights-cleared; private when draft/archived/unreviewed | Supabase Postgres (RLS-protected) |
+| Catalog metadata (products, genres, plugins) | Public when published; private when draft/archived | Supabase Postgres (RLS-protected) |
 | Public preview media | Public by design | `product-public` bucket / `product_media` rows |
 | Private deliverables | High — paid product | `product-private` bucket / `product_deliverables` rows (never in public reads) |
 | Customer payment/delivery data | High — PII | Stripe + a hashed download-token table (Step 6). Never logged in full. |
@@ -19,7 +19,7 @@ and the future payment/download security requirements.
 
 | Actor | Can authenticate? | Powers |
 | --- | --- | --- |
-| Anonymous / public visitor | No (no customer auth, ever) | Read only published + rights-cleared catalog, taxonomy, public media. No mutations. |
+| Anonymous / public visitor | No (no customer auth, ever) | Read only published catalog, taxonomy, public media. No mutations. |
 | Authenticated non-admin | (admin auth only; no customer accounts) | No more than anon. No mutations, no private reads. |
 | Allow-listed admin (MFA/AAL2) | Yes (Supabase Auth, manual provisioning) | Catalog CRUD, publish/archive, deliverable management, asset upload. |
 | Privileged server client (secret key) | n/a (server-only) | Narrowly-scoped ops; never compensates for broken RLS. |
@@ -104,7 +104,7 @@ only required operations are granted back. Policies are written per operation
 
 | Table | anon SELECT | non-admin SELECT | admin SELECT | anon/non-admin INSERT/UPDATE/DELETE | admin mutation |
 | --- | --- | --- | --- | --- | --- |
-| `products` | only `published` + rights-cleared rows; only public columns | same as anon | all rows, all columns | denied | allowed via `is_admin()` |
+| `products` | only `published` rows; only public columns | same as anon | all rows, all columns | denied | allowed via `is_admin()` |
 | `genres`, `plugins` | all | all | all | denied | allowed |
 | `product_genres`, `product_plugins` | only for published products | same | all | denied | allowed |
 | `product_media` | only for published products | same | all | denied | allowed |
@@ -113,8 +113,7 @@ only required operations are granted back. Policies are written per operation
 
 The publication rule is enforced by a Postgres CHECK constraint
 (`products_publication_check` in `0001_catalog_schema.sql`):
-`lifecycle = 'published'` ⇒ `rights_status IN ('original','licensed')` AND
-`published_at IS NOT NULL` AND `price >= 0` AND `price_currency IS NOT NULL` AND
+`lifecycle = 'published'` ⇒ `published_at IS NOT NULL` AND `price >= 0` AND `price_currency IS NOT NULL` AND
 required public metadata present. `assertPublishable()` in the data-access
 write path + the Zod schema apply the same rule as defense-in-depth before the
 DB is ever reached.

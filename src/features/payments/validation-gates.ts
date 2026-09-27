@@ -12,8 +12,6 @@ export interface PurchasableProductInput {
   slug: string;
   /** lifecycle: draft | published | archived */
   lifecycle: string;
-  /** rights_status: unreviewed | original | licensed | rejected */
-  rightsStatus: string;
   price: number; // integer minor units
   currency: string; // lowercase ISO
   hasActiveValidatedDeliverable: boolean;
@@ -24,7 +22,6 @@ export interface PurchasableProductInput {
 export type CartGateError =
   | "free_excluded"
   | "not_published"
-  | "rights_not_cleared"
   | "missing_deliverable"
   | "invalid_price"
   | "unsupported_currency";
@@ -36,8 +33,6 @@ export function validatePurchasable(
   const errors: CartGateError[] = [];
   if (p.free) errors.push("free_excluded");
   if (p.lifecycle !== "published") errors.push("not_published");
-  if (p.rightsStatus !== "original" && p.rightsStatus !== "licensed")
-    errors.push("rights_not_cleared");
   if (!p.hasActiveValidatedDeliverable) errors.push("missing_deliverable");
   if (!isValidAmount(p.price)) errors.push("invalid_price");
   if (!isValidCurrency(p.currency)) errors.push("unsupported_currency");

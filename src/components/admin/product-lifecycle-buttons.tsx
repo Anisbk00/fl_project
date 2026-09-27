@@ -16,7 +16,7 @@ type Lifecycle = "draft" | "published" | "archived";
  *
  * Each button dispatches a transactional RPC Server Action that re-checks AAL2
  * + the expected `row_version` and surfaces a structured error if the readiness
- * gate rejects (rights not cleared, missing cover, missing deliverable, etc.).
+ * gate rejects (missing cover, missing deliverable, etc.).
  * On success the action navigates back to the same edit page (which shows the
  * updated lifecycle badge).
  */

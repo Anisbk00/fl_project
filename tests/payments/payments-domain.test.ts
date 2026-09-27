@@ -140,16 +140,15 @@ describe("webhook event allow-list", () => {
 describe("validation gates", () => {
   const good: PurchasableProductInput = {
     productId: "p1", slug: "vector-drift", lifecycle: "published",
-    rightsStatus: "original", price: 2400, currency: "usd",
+    price: 2400, currency: "usd",
     hasActiveValidatedDeliverable: true, free: false,
   };
   it("accepts a purchasable product", () => {
     expect(validatePurchasable(good, "usd")).toEqual([]);
   });
-  it("rejects free / draft / rights-blocked / missing-deliverable / bad price / cross-currency", () => {
+  it("rejects free / draft / missing-deliverable / bad price / cross-currency", () => {
     expect(validatePurchasable({ ...good, free: true }, "usd")).toContain("free_excluded");
     expect(validatePurchasable({ ...good, lifecycle: "draft" }, "usd")).toContain("not_published");
-    expect(validatePurchasable({ ...good, rightsStatus: "unreviewed" }, "usd")).toContain("rights_not_cleared");
     expect(validatePurchasable({ ...good, hasActiveValidatedDeliverable: false }, "usd")).toContain("missing_deliverable");
     expect(validatePurchasable({ ...good, price: -1 }, "usd")).toContain("invalid_price");
     expect(validatePurchasable({ ...good, currency: "eur" }, "usd")).toContain("unsupported_currency");

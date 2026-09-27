@@ -55,7 +55,6 @@ export const productFormSchema = z.object({
     .optional()
     .nullable(),
   productType: z.enum(["project_file", "remake", "stems", "sample_pack"]),
-  rightsStatus: z.enum(["unreviewed", "original", "licensed", "rejected"]),
   price: z
     .number()
     .int("Price must be an integer in minor currency units (e.g. 2400 = $24.00).")

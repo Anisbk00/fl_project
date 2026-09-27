@@ -24,23 +24,8 @@ export type ProductType = (typeof PRODUCT_TYPES)[number];
 export const LIFECYCLES = ["draft", "published", "archived"] as const;
 export type Lifecycle = (typeof LIFECYCLES)[number];
 
-export const RIGHTS_STATUSES = [
-  "unreviewed",
-  "original",
-  "licensed",
-  "rejected",
-] as const;
-export type RightsStatus = (typeof RIGHTS_STATUSES)[number];
-
-/** Rights statuses that legally permit publication. */
-export const PUBLISHABLE_RIGHTS: ReadonlyArray<RightsStatus> = [
-  "original",
-  "licensed",
-];
-
 export const productTypeSchema = z.enum(PRODUCT_TYPES);
 export const lifecycleSchema = z.enum(LIFECYCLES);
-export const rightsStatusSchema = z.enum(RIGHTS_STATUSES);
 
 const slugRegex = /^(?!-)[a-z0-9]+(?:-[a-z0-9]+)*(?<!-)$/;
 
@@ -85,7 +70,6 @@ export const createProductInputSchema = z
     shortDescription: z.string().trim().min(1).max(300),
     longDescription: z.string().trim().max(20000).optional(),
     productType: productTypeSchema,
-    rightsStatus: rightsStatusSchema.default("unreviewed"),
     price: priceSchema,
     priceCurrency: currencySchema.default("USD"),
     compareAtPrice: z.number().int().min(0).optional(),

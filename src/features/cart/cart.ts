@@ -30,7 +30,7 @@ export interface CartLine {
   /** Current authoritative price in minor units (null when unavailable). */
   price: number | null;
   currency: string | null;
-  /** Published + rights-cleared right now. */
+  /** Published right now. */
   available: boolean;
 }
 
@@ -76,14 +76,13 @@ export async function getCart(): Promise<Cart | null> {
   const db = getPrivilegedClient();
   const { data, error } = await db
     .from("guest_cart_items")
-    .select("product_id, created_at, products(slug, title, price, price_currency, lifecycle, rights_status)")
+    .select("product_id, created_at, products(slug, title, price, price_currency, lifecycle)")
     .eq("cart_id", id)
     .order("created_at");
   if (error) throw new Error("cart_items_failed");
   const lines = data.map((row): CartLine => {
     const p = row.products;
-    const available =
-      !!p && p.lifecycle === "published" && (p.rights_status === "original" || p.rights_status === "licensed");
+    const available = !!p && p.lifecycle === "published";
     return {
       productId: row.product_id,
       slug: p?.slug ?? "",
@@ -102,13 +101,12 @@ export async function addToCart(productId: string): Promise<CartMutationResult> 
   if (!productIdSchema.safeParse(productId).success) return { ok: false, error: "invalid_product" };
   const db = getPrivilegedClient();
 
-  // Only published, rights-cleared products may enter a cart.
+  // Only published products may enter a cart.
   const { data: product, error: pErr } = await db
     .from("products")
     .select("id")
     .eq("id", productId)
     .eq("lifecycle", "published")
-    .in("rights_status", ["original", "licensed"])
     .maybeSingle();
   if (pErr) throw new Error("product_lookup_failed");
   if (!product) return { ok: false, error: "unavailable" };

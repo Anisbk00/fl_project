@@ -102,7 +102,6 @@ export interface SearchRow {
   long_description: string | null;
   product_type: ProductTypeVM;
   lifecycle: string;
-  rights_status: string;
   price: number;
   price_currency: string;
   compare_at_price: number | null;
@@ -273,7 +272,7 @@ const listFreeUncached = async (): Promise<ProductCardVM[]> => {
 };
 
 const listFeaturedUncached = async (limit: number): Promise<ProductCardVM[]> => {
-  // Featured = newest published rights-cleared (honest "Recent resources").
+  // Featured = newest published (honest "Recent resources").
   const c = client();
   const { data, error } = await c.rpc("search_products", {
     p_q: "",

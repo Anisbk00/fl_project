@@ -6,10 +6,10 @@ taxonomies, audit behavior, and cache invalidation/reconciliation.
 
 ## Information architecture
 
-- `/admin` dashboard: draft/published/archived counts, items needing rights or
+- `/admin` dashboard: draft/published/archived counts, items needing
   asset validation, recent safe audit events. No business analytics.
 - `/admin/products` — server-side paginated, filterable table
-  (title/slug, type, lifecycle, rights readiness, asset readiness, genre,
+  (title/slug, type, lifecycle, asset readiness, genre,
   updated). Filters in the URL. The full catalog is never loaded into the browser.
 - `/admin/products/new` + `/admin/products/[id]` editor.
 - `/admin/products/[id]/preview` — protected draft preview (AAL2, no-store,
@@ -25,8 +25,7 @@ classification (integer minor-unit price + ISO currency, product type, free/
 paid, genres, tags, plugin/software relationships), compatibility (DAW + version,
 plugin requirements + min versions, BPM, key, duration, formats, file size),
 public cover/preview media, immutable private deliverable versions, license/
-customer-facing usage summary, private rights status + evidence/notes +
-reviewer attestation + restrictions + expiry, SEO title/description, lifecycle
+customer-facing usage summary, SEO title/description, lifecycle
 + publish-readiness status.
 
 ## Validation + concurrency
@@ -40,7 +39,7 @@ reviewer attestation + restrictions + expiry, SEO title/description, lifecycle
   the DB compares atomically and returns a typed conflict (`checkConcurrency`
   pure helper; `publish_product` re-checks). No silent overwrite. The conflict
   UI lets the admin reload or consciously reconcile (no auto-merge of legal/
-  rights/asset fields).
+  asset fields).
 - Slugs unique + normalized by one shared rule. Published slugs are locked in
   Step 4 (post-publication slug changes need a tested redirect record — not
   implemented here).
@@ -58,8 +57,7 @@ transitions are rejected atomically by the DB RPCs.
 
 ONE atomic SECURITY DEFINER RPC. Re-reads the row (`for update`) and rejects
 unless: caller is active admin + AAL2; optimistic-concurrency version matches;
-rights status is `original`/`licensed` with current admin attestation + review;
-licensed products have source/evidence + (no expired license); required public
+required public
 data valid; a validated public cover exists; a paid product has ≥1 active
 validated private ZIP; no pending uploads. Updates lifecycle/`row_version` +
 writes an audit event in the SAME transaction. Returns structured, non-secret

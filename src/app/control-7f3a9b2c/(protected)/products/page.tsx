@@ -33,7 +33,6 @@ interface ProductListRow {
   title: string;
   product_type: Database["public"]["Enums"]["product_type"];
   lifecycle: Database["public"]["Enums"]["product_lifecycle"];
-  rights_status: Database["public"]["Enums"]["rights_status"];
   price: number;
   price_currency: string;
   featured: boolean;
@@ -53,7 +52,7 @@ async function listProducts(): Promise<
     const { data, error } = await client
       .from("products")
       .select(
-        "id,slug,title,product_type,lifecycle,rights_status,price,price_currency,featured,updated_at",
+        "id,slug,title,product_type,lifecycle,price,price_currency,featured,updated_at",
       )
       .order("updated_at", { ascending: false })
       .limit(50);
@@ -77,14 +76,6 @@ function lifecycleTone(
   if (l === "published") return "success";
   if (l === "archived") return "neutral";
   return "warning";
-}
-
-function rightsTone(
-  r: Database["public"]["Enums"]["rights_status"],
-): "brand" | "neutral" | "danger" {
-  if (r === "original" || r === "licensed") return "brand";
-  if (r === "rejected") return "danger";
-  return "neutral";
 }
 
 function relativeTime(iso: string): string {
@@ -151,7 +142,6 @@ export default async function AdminProductsPage() {
                   <TableHead className="min-w-[16rem]">Title</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Lifecycle</TableHead>
-                  <TableHead>Rights</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-center">Featured</TableHead>
                   <TableHead>Updated</TableHead>
@@ -179,11 +169,6 @@ export default async function AdminProductsPage() {
                     <TableCell>
                       <Badge tone={lifecycleTone(p.lifecycle)}>
                         {p.lifecycle}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge tone={rightsTone(p.rights_status)}>
-                        {p.rights_status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right t-technical text-ink">

@@ -112,7 +112,6 @@ export async function saveProduct(
     // Editing does not change lifecycle — keep the existing value. For new
     // rows we default to draft (the schema default).
     lifecycle: "draft",
-    rights_status: v.rightsStatus,
     price: v.price,
     price_currency: v.priceCurrency,
     compare_at_price: v.compareAtPrice ?? null,
@@ -170,7 +169,6 @@ export async function saveProduct(
       short_description: v.shortDescription,
       long_description: emptyToNull(v.longDescription),
       product_type: v.productType,
-      rights_status: v.rightsStatus,
       price: v.price,
       price_currency: v.priceCurrency,
       compare_at_price: v.compareAtPrice ?? null,
@@ -226,8 +224,8 @@ export async function saveProduct(
 
 // ---------------------------------------------------------------------------
 // publishProductAction — calls the transactional publish_product RPC.
-// Returns structured errors when the readiness gate rejects (rights not
-// cleared, missing cover, missing deliverable, etc.).
+// Returns structured errors when the readiness gate rejects (missing cover,
+// missing deliverable, etc.).
 // ---------------------------------------------------------------------------
 
 export async function publishProductAction(
@@ -1108,13 +1106,6 @@ const PUBLISH_ERROR_LABELS: Record<string, string> = {
   not_found: "The product no longer exists.",
   conflict:
     "Someone else edited this product. Reload the page and try publishing again.",
-  rights_not_cleared:
-    "Rights are not cleared. Set rights status to “original” or “licensed”.",
-  rights_not_attested:
-    "A rights reviewer must attest to the rights before publishing.",
-  licensed_evidence_missing:
-    "Licensed products require evidence + source type in the rights review record.",
-  license_expired: "The license for this product has expired.",
   title_missing: "Title is required before publishing.",
   summary_missing: "Short description is required before publishing.",
   invalid_price: "Price must be a non-negative integer before publishing.",

@@ -53,7 +53,6 @@ export interface ProductFormValues {
   shortDescription: string;
   longDescription: string;
   productType: "project_file" | "remake" | "stems" | "sample_pack";
-  rightsStatus: "unreviewed" | "original" | "licensed" | "rejected";
   price: number;
   priceCurrency: string;
   compareAtPrice: number | null;
@@ -127,7 +126,6 @@ async function saveActionAdapter(
     shortDescription: values.shortDescription,
     longDescription: emptyOrUndefined(values.longDescription) ? null : values.longDescription,
     productType: values.productType,
-    rightsStatus: values.rightsStatus,
     price: values.price,
     priceCurrency: values.priceCurrency,
     compareAtPrice: values.compareAtPrice,
@@ -420,30 +418,6 @@ export function ProductForm({
             </Select>
           </FieldRow>
 
-          <FieldRow
-            id="rightsStatus"
-            label="Rights status"
-            hint="Required to be “original” or “licensed” before publishing."
-            error={fieldErrors.rightsStatus}
-          >
-            <Select
-              value={values.rightsStatus}
-              onValueChange={(v) =>
-                update("rightsStatus", v as ProductFormValues["rightsStatus"])
-              }
-              disabled={submitting}
-            >
-              <SelectTrigger id="rightsStatus" className={SELECT_TRIGGER_CLASS} aria-invalid={!!fieldErrors.rightsStatus || undefined}>
-                <SelectValue placeholder="Select rights" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unreviewed">Unreviewed</SelectItem>
-                <SelectItem value="original">Original</SelectItem>
-                <SelectItem value="licensed">Licensed</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-          </FieldRow>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">

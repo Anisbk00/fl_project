@@ -4,12 +4,6 @@
  * pre-flight checklist. The DB RPC remains authoritative; this never grants.
  */
 export interface ReadinessInput {
-  rightsStatus: string; // unreviewed | original | licensed | rejected
-  rightsAttested: boolean; // reviewer_uid + reviewed_at present
-  rightsReviewedAt: string | null;
-  licensedSourceType: string | null;
-  licensedEvidenceRef: string | null;
-  licenseExpiresAt: string | null; // ISO or null
   title: string;
   shortDescription: string;
   price: number; // integer minor units
@@ -24,10 +18,6 @@ export type ReadinessError =
   | "unauthorized"
   | "conflict"
   | "not_found"
-  | "rights_not_cleared"
-  | "rights_not_attested"
-  | "licensed_evidence_missing"
-  | "license_expired"
   | "title_missing"
   | "summary_missing"
   | "invalid_price"
@@ -43,23 +33,6 @@ export interface ReadinessResult {
 
 export function checkPublishReadiness(input: ReadinessInput): ReadinessResult {
   const errors: ReadinessError[] = [];
-
-  // Rights: original or licensed, with current admin attestation + review.
-  if (input.rightsStatus !== "original" && input.rightsStatus !== "licensed") {
-    errors.push("rights_not_cleared");
-  }
-  if (!input.rightsAttested || !input.rightsReviewedAt) {
-    errors.push("rights_not_attested");
-  }
-  if (
-    input.rightsStatus === "licensed" &&
-    (!input.licensedSourceType || !input.licensedEvidenceRef)
-  ) {
-    errors.push("licensed_evidence_missing");
-  }
-  if (input.licenseExpiresAt && new Date(input.licenseExpiresAt) < new Date()) {
-    errors.push("license_expired");
-  }
 
   // Required public data.
   if (!input.title || input.title.trim().length < 1) errors.push("title_missing");
@@ -87,10 +60,6 @@ export const READINESS_LABELS: Record<ReadinessError, string> = {
   unauthorized: "You are not authorized to publish.",
   conflict: "Another edit changed this product — reload to reconcile.",
   not_found: "Product not found.",
-  rights_not_cleared: "Rights status must be original or licensed.",
-  rights_not_attested: "A current administrator rights attestation is required.",
-  licensed_evidence_missing: "Licensed products need a source/evidence reference.",
-  license_expired: "The recorded license has expired.",
   title_missing: "A title is required.",
   summary_missing: "A short summary is required.",
   invalid_price: "Price must be a non-negative integer (minor units).",

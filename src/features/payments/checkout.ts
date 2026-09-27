@@ -56,7 +56,7 @@ export async function createCheckout(cartId: string): Promise<CheckoutResult> {
   const { data: rows, error } = await db
     .from("guest_cart_items")
     .select(
-      "product_id, products(id, slug, title, short_description, product_type, price, price_currency, row_version, lifecycle, rights_status, product_deliverables(id, version, active, validation_state))",
+      "product_id, products(id, slug, title, short_description, product_type, price, price_currency, row_version, lifecycle, product_deliverables(id, version, active, validation_state))",
     )
     .eq("cart_id", cartId);
   if (error) throw new Error("checkout_items_failed");
@@ -65,7 +65,7 @@ export async function createCheckout(cartId: string): Promise<CheckoutResult> {
   const items: SnapshotItem[] = [];
   for (const row of rows) {
     const p = row.products;
-    if (!p || p.lifecycle !== "published" || !(p.rights_status === "original" || p.rights_status === "licensed")) {
+    if (!p || p.lifecycle !== "published") {
       return { ok: false, error: "unavailable_items" };
     }
     // Newest active, validated deliverable version is what the buyer purchases.

@@ -70,9 +70,6 @@ endorsement).
 ## Legal / originality language
 
 - The store publishes only **original** or **properly licensed** material.
-- A product can be publicly published only when its rights status is `original`
-  or `licensed` (enforced by the database CHECK constraint + the application
-  `assertPublishable` guardrail).
 - State independence from artists, labels, and DAW vendors wherever legally
   appropriate (footer, about, product footers).
 - Draft legal pages carry a "Draft — under legal review" badge and `noindex`

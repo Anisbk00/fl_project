@@ -39,11 +39,6 @@ export default function AboutPage() {
           artwork without redistribution rights, or a famous song remake
           merely because it was recreated by ear.
         </p>
-        <p>
-          A product can be publicly published only when its rights status is
-          marked <strong>original</strong> or <strong>licensed</strong>. This
-          is an engineering guardrail, not a substitute for legal advice.
-        </p>
         <h2>Independence</h2>
         <p>
           {siteConfig.name} is independently operated. We are not affiliated

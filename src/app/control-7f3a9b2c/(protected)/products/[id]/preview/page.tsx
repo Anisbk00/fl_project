@@ -25,7 +25,6 @@ interface ProductRow {
   long_description: string | null;
   product_type: string;
   lifecycle: string;
-  rights_status: string;
   price: number;
   price_currency: string;
   compare_at_price: number | null;
@@ -78,7 +77,7 @@ export default async function ProductPreviewPage({
     const [p, pg, pp] = await Promise.all([
       client
         .from("products")
-        .select("id, slug, title, short_description, long_description, product_type, lifecycle, rights_status, price, price_currency, compare_at_price, daw_name, daw_version, bpm, musical_key, duration_seconds, total_size_bytes, included_formats, featured, seo_title, seo_description, published_at")
+        .select("id, slug, title, short_description, long_description, product_type, lifecycle, price, price_currency, compare_at_price, daw_name, daw_version, bpm, musical_key, duration_seconds, total_size_bytes, included_formats, featured, seo_title, seo_description, published_at")
         .eq("id", id)
         .maybeSingle(),
       client
@@ -129,7 +128,6 @@ export default async function ProductPreviewPage({
         <article className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={lifecycleTone}>{product.lifecycle}</Badge>
-            <Badge tone="neutral">{product.rights_status}</Badge>
             {product.featured ? <Badge tone="brand">Featured</Badge> : null}
           </div>
           <h2 className="t-display text-ink">{product.title}</h2>

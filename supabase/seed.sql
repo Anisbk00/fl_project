@@ -37,27 +37,27 @@ insert into public.plugins (slug, name, vendor) values
 on conflict (slug) do nothing;
 
 -- Products -------------------------------------------------------------------
--- Visible (published + original/licensed)
+-- Visible (published)
 insert into public.products
-  (slug, title, short_description, long_description, product_type, lifecycle, rights_status, price, price_currency, compare_at_price, daw_name, daw_version, bpm, musical_key, duration_seconds, total_size_bytes, included_formats, featured, seo_title, seo_description, published_at, created_by_id)
+  (slug, title, short_description, long_description, product_type, lifecycle, price, price_currency, compare_at_price, daw_name, daw_version, bpm, musical_key, duration_seconds, total_size_bytes, included_formats, featured, seo_title, seo_description, published_at, created_by_id)
 values
-  ('vector-drift','Vector Drift','Original melodic techno project file with full arrangement.','## Inside\n\nFull FL Studio session with routing, automation, and stems. All audio and MIDI are original.\n\n## Compatibility\n\nFL Studio 21; Serum 1.3 required.','project_file','published','original',2400,'USD',3200,'FL Studio','21',126,'F# minor',312,58720256,'.flp, .zip, stems',true,'Vector Drift — Original FL Studio Project','Original FL Studio project with full arrangement, stems, and routing.',now(),'00000000-0000-0000-0000-0000000000aa'),
-  ('tape-hiss-studies','Tape Hiss Studies','Original lo-fi one-shots and loops in 24-bit WAV.','A pack of original dusty keys, tape hiss, and percussive loops. 24-bit WAV.','sample_pack','published','original',1900,'USD',null,null,null,90,'A minor',null,312412160,'24-bit WAV, 128 one-shots, 32 loops',true,'Tape Hiss Studies — Original Sample Pack','Original lo-fi one-shots and loops.',now(),'00000000-0000-0000-0000-0000000000aa'),
-  ('perimeter','Perimeter','Drum & bass stems, mixed-down and ready to drop in.','Original DnB stems. Compatible with any DAW that imports WAV.','stems','published','licensed',1500,'EUR',null,'Ableton Live','12',174,'G minor',268,412877312,'stems, mixdown',true,'Perimeter — DnB Stems','Drum & bass stems pack.',now(),'00000000-0000-0000-0000-0000000000aa'),
-  ('granite-room','Granite Room','Deep house project with mixed stems and routing.','Original deep house session. Includes stems and full routing.','project_file','published','original',2800,'USD',null,'Ableton Live','12',124,'D minor',358,88120128,'.als, .zip, stems',true,'Granite Room — Ableton Project','Original deep house project file.',now(),'00000000-0000-0000-0000-0000000000aa'),
-  ('half-light','Half-Light','Ambient cinematic stems for layering and study.','Original ambient stems. Suited for layering and reverse-engineering.','stems','published','original',1200,'EUR',null,null,null,110,'E minor',240,220300800,'stems, mixdown',false,'Half-Light — Ambient Stems','Ambient cinematic stems.',now(),'00000000-0000-0000-0000-0000000000aa'),
+  ('vector-drift','Vector Drift','Original melodic techno project file with full arrangement.','## Inside\n\nFull FL Studio session with routing, automation, and stems. All audio and MIDI are original.\n\n## Compatibility\n\nFL Studio 21; Serum 1.3 required.','project_file','published',2400,'USD',3200,'FL Studio','21',126,'F# minor',312,58720256,'.flp, .zip, stems',true,'Vector Drift — Original FL Studio Project','Original FL Studio project with full arrangement, stems, and routing.',now(),'00000000-0000-0000-0000-0000000000aa'),
+  ('tape-hiss-studies','Tape Hiss Studies','Original lo-fi one-shots and loops in 24-bit WAV.','A pack of original dusty keys, tape hiss, and percussive loops. 24-bit WAV.','sample_pack','published',1900,'USD',null,null,null,90,'A minor',null,312412160,'24-bit WAV, 128 one-shots, 32 loops',true,'Tape Hiss Studies — Original Sample Pack','Original lo-fi one-shots and loops.',now(),'00000000-0000-0000-0000-0000000000aa'),
+  ('perimeter','Perimeter','Drum & bass stems, mixed-down and ready to drop in.','Original DnB stems. Compatible with any DAW that imports WAV.','stems','published',1500,'EUR',null,'Ableton Live','12',174,'G minor',268,412877312,'stems, mixdown',true,'Perimeter — DnB Stems','Drum & bass stems pack.',now(),'00000000-0000-0000-0000-0000000000aa'),
+  ('granite-room','Granite Room','Deep house project with mixed stems and routing.','Original deep house session. Includes stems and full routing.','project_file','published',2800,'USD',null,'Ableton Live','12',124,'D minor',358,88120128,'.als, .zip, stems',true,'Granite Room — Ableton Project','Original deep house project file.',now(),'00000000-0000-0000-0000-0000000000aa'),
+  ('half-light','Half-Light','Ambient cinematic stems for layering and study.','Original ambient stems. Suited for layering and reverse-engineering.','stems','published',1200,'EUR',null,null,null,110,'E minor',240,220300800,'stems, mixdown',false,'Half-Light — Ambient Stems','Ambient cinematic stems.',now(),'00000000-0000-0000-0000-0000000000aa'),
   -- Free visible product (price = 0)
-  ('ferrite','Ferrite','Free original techno one-shots.','A small free pack of original techno one-shots. 24-bit WAV.','sample_pack','published','original',0,'USD',null,null,null,128,'A minor',null,96420352,'24-bit WAV, 60 one-shots',false,'Ferrite — Free Techno Pack','Free original techno one-shots.',now(),'00000000-0000-0000-0000-0000000000aa')
+  ('ferrite','Ferrite','Free original techno one-shots.','A small free pack of original techno one-shots. 24-bit WAV.','sample_pack','published',0,'USD',null,null,null,128,'A minor',null,96420352,'24-bit WAV, 60 one-shots',false,'Ferrite — Free Techno Pack','Free original techno one-shots.',now(),'00000000-0000-0000-0000-0000000000aa')
 on conflict (slug) do nothing;
 
 -- Hidden (prove RLS + 404 behavior) -----------------------------------------
 insert into public.products
-  (slug, title, short_description, product_type, lifecycle, rights_status, price, price_currency, daw_name, bpm, musical_key)
+  (slug, title, short_description, product_type, lifecycle, price, price_currency, daw_name, bpm, musical_key)
 values
-  ('draft-track','Draft Track','Should never be public.','stems','draft','original',900,'USD','FL Studio',128,'A minor'),
-  ('archived-pack','Archived Pack','Removed from sale.','sample_pack','archived','licensed',1500,'USD',null,140,'F minor'),
-  ('unreviewed-draft','Unreviewed Draft','Awaiting rights review.','remake','draft','unreviewed',1900,'USD','FL Studio',140,'C# minor'),
-  ('rejected-public','Should Be Hidden','Rights rejected.','stems','draft','rejected',1900,'USD',null,120,'A minor')
+  ('draft-track','Draft Track','Should never be public.','stems','draft',900,'USD','FL Studio',128,'A minor'),
+  ('archived-pack','Archived Pack','Removed from sale.','sample_pack','archived',1500,'USD',null,140,'F minor'),
+  ('unreviewed-draft','Unreviewed Draft','Unfinished draft.','remake','draft',1900,'USD','FL Studio',140,'C# minor'),
+  ('rejected-public','Should Be Hidden','Never published.','stems','draft',1900,'USD',null,120,'A minor')
 on conflict (slug) do nothing;
 
 -- Joins ----------------------------------------------------------------------
