@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
+import { NavProgress } from "@/components/site/nav-progress";
 import { publicEnv } from "@/lib/env/public";
 import { siteConfig } from "@/lib/site-config";
 
@@ -61,6 +63,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-canvas text-ink antialiased`}
       >
+        <Suspense>
+          <NavProgress />
+        </Suspense>
         {children}
       </body>
     </html>

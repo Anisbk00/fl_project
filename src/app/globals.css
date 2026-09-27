@@ -203,6 +203,7 @@
   }
   html {
     -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
     scroll-behavior: smooth;
   }
   body {
@@ -385,6 +386,63 @@
     border: 0 !important;
   }
 
+  /* Shimmer skeleton (replaces flat animate-pulse) */
+  .skeleton {
+    border-radius: var(--radius-md);
+    background: linear-gradient(
+        100deg,
+        transparent 30%,
+        color-mix(in oklch, var(--ink) 6%, transparent) 50%,
+        transparent 70%
+      )
+      var(--surface-inset);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s var(--ease-standard) infinite;
+  }
+  @keyframes shimmer {
+    from { background-position: 150% 0; }
+    to { background-position: -50% 0; }
+  }
+
+  /* Page enter — used by route templates, which remount on every navigation */
+  .page-enter {
+    animation: page-enter var(--duration-slow) var(--ease-emphasized) both;
+  }
+  @keyframes page-enter {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* Top navigation progress bar (see components/site/nav-progress.tsx) */
+  .nav-progress {
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: 2px;
+    z-index: var(--z-toast);
+    pointer-events: none;
+    background: var(--brand);
+    box-shadow: 0 0 10px var(--brand);
+    transform-origin: left;
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  .nav-progress[data-state="loading"] {
+    opacity: 1;
+    /* Fast start, then crawl toward 90% — never "finishes" until the route does */
+    animation: nav-progress 8s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+  }
+  .nav-progress[data-state="done"] {
+    transform: scaleX(1);
+    opacity: 0;
+    transition:
+      transform 200ms var(--ease-standard),
+      opacity 300ms 200ms var(--ease-standard);
+  }
+  @keyframes nav-progress {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(0.9); }
+  }
+
   /* Card hover lift (motion-respecting) */
   .card-lift {
     transition:
@@ -394,6 +452,9 @@
   }
   .card-lift:hover {
     transform: translateY(-2px);
+  }
+  .card-lift:active {
+    transform: scale(0.985);
   }
   @media (prefers-reduced-motion: reduce) {
     .card-lift:hover {

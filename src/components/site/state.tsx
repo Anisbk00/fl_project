@@ -95,11 +95,11 @@ export function NoResultsState({
 export function SkeletonCard() {
   return (
     <div className="rounded-xl border border-line bg-surface overflow-hidden">
-      <div className="aspect-[4/3] w-full bg-surface-inset animate-pulse" />
+      <div className="aspect-[4/3] w-full skeleton rounded-none" />
       <div className="p-4 flex flex-col gap-2">
-        <div className="h-4 w-2/3 rounded bg-surface-inset animate-pulse" />
-        <div className="h-3 w-1/2 rounded bg-surface-inset animate-pulse" />
-        <div className="mt-2 h-5 w-1/3 rounded bg-surface-inset animate-pulse" />
+        <div className="h-4 w-2/3 skeleton" />
+        <div className="h-3 w-1/2 skeleton" />
+        <div className="mt-2 h-5 w-1/3 skeleton" />
       </div>
     </div>
   );

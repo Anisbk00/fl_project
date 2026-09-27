@@ -18,7 +18,7 @@ export const buttonVariants = cva(
     "transition-[background-color,color,border-color,box-shadow,transform] duration-[var(--duration-base)] ease-[var(--ease-standard)]",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--canvas)]",
     "disabled:opacity-50 disabled:pointer-events-none aria-busy:opacity-80",
-    "active:translate-y-px",
+    "active:scale-[0.97] active:duration-[var(--duration-fast)]",
   ],
   {
     variants: {
