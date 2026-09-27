@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
+import { formatPrice } from "@/components/site/price";
 import {
   ACCESS_TOKEN_EXPIRY_HOURS,
-  ACTIVE_TOKEN_CAP,
 } from "./policy";
 
 /**
@@ -95,12 +95,12 @@ export function prepareEmailPayload(input: EmailPayloadInput): PreparedEmailPayl
   const licenseUrl = sanitizeLine(input.licenseUrl, 500);
   const refundUrl = sanitizeLine(input.refundUrl, 500);
   const accessUrl = buildAccessUrl(input.canonicalOrigin, input.accessToken);
-  const totalFormatted = `${(input.totalAmount / 100).toFixed(2)} ${input.currency.toUpperCase()}`;
+  const totalFormatted = formatPrice(input.totalAmount, input.currency);
 
   const itemLines = input.items.map((item) => {
     const title = escapeHtml(sanitizeLine(item.title, MAX_TITLE_LENGTH));
     const type = escapeHtml(sanitizeLine(item.productType, 40));
-    const amount = `${(item.unitAmount / 100).toFixed(2)} ${item.currency.toUpperCase()}`;
+    const amount = formatPrice(item.unitAmount, item.currency);
     return `<tr><td style="padding:4px 0">${title}</td><td style="padding:4px 0;color:#888">${type}</td><td style="padding:4px 0;text-align:right">${amount}</td></tr>`;
   }).join("");
 
@@ -118,7 +118,7 @@ export function prepareEmailPayload(input: EmailPayloadInput): PreparedEmailPayl
   </p>
   <p style="font-size:12px;color:#888;margin:16px 0;line-height:1.5">
     Or copy this link: ${escapeHtml(accessUrl)}<br>
-    This link expires in ${ACCESS_TOKEN_EXPIRY_HOURS} hours and can only be used once. Do not forward this email — the link grants access to your files.
+    This link expires in ${ACCESS_TOKEN_EXPIRY_HOURS} hours. Do not forward this email — the link grants access to your files.
   </p>
   <p style="font-size:12px;color:#888;line-height:1.5">
     The package is downloaded from the secure page and is not attached to this email.<br>
@@ -131,14 +131,14 @@ export function prepareEmailPayload(input: EmailPayloadInput): PreparedEmailPayl
 
 Your payment has been confirmed.
 
-${input.items.map((i) => `- ${sanitizeLine(i.title, MAX_TITLE_LENGTH)} (${sanitizeLine(i.productType, 40)}): ${(i.unitAmount / 100).toFixed(2)} ${i.currency.toUpperCase()}`).join("\n")}
+${input.items.map((i) => `- ${sanitizeLine(i.title, MAX_TITLE_LENGTH)} (${sanitizeLine(i.productType, 40)}): ${formatPrice(i.unitAmount, i.currency)}`).join("\n")}
 
 Total: ${totalFormatted}
 Order: ${orderNumber}
 
 Continue to downloads: ${accessUrl}
 
-This link expires in ${ACCESS_TOKEN_EXPIRY_HOURS} hours and can only be used once.
+This link expires in ${ACCESS_TOKEN_EXPIRY_HOURS} hours.
 Do not forward this email — the link grants access to your files.
 The package is downloaded from the secure page and is not attached to this email.
 

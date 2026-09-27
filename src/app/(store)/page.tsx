@@ -13,7 +13,6 @@ import { Container, Section, Grid } from "@/components/site/container";
 import { SectionHeading } from "@/components/site/section-heading";
 import { LinkButton } from "@/components/site/button";
 import { Badge } from "@/components/site/badge";
-import { ProductCard } from "@/components/site/product-card";
 import { HeroVisual } from "@/components/site/hero-visual";
 import { FeaturedProducts } from "@/components/site/featured-products";
 import { PRODUCT_TYPE_LABELS, type ProductTypeVM } from "@/features/catalog/view-models";
@@ -95,8 +94,7 @@ export default function HomePage() {
                 </LinkButton>
               </div>
               <p className="t-caption text-ink-muted">
-                Storefront shell in progress — live catalog, checkout, and
-                delivery arrive in later steps.
+                Secure checkout by Stripe · no account needed · download link emailed after payment.
               </p>
             </div>
             <HeroVisual className="lg:row-span-2" />
@@ -266,8 +264,8 @@ export default function HomePage() {
               Test the catalog with free downloads first.
             </h2>
             <p className="t-body text-ink-secondary max-w-lg">
-              A small set of free original sample packs — no account required to
-              browse. Full free delivery wiring arrives in a later step.
+              A small set of free original sample packs — no account needed.
+              Check out with your email and we send you the download link.
             </p>
             <LinkButton href="/free" variant="secondary" size="lg">
               Browse free downloads

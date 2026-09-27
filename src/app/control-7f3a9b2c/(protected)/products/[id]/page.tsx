@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireAdminOrRedirect } from "@/lib/auth/require-admin";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -185,6 +186,7 @@ async function loadEditData(id: string) {
 }
 
 export default async function ProductEditorPage({ params }: PageProps) {
+  await requireAdminOrRedirect({ aal2: true });
   const { id } = await params;
   const data = await loadEditData(id);
 
@@ -325,7 +327,6 @@ export default async function ProductEditorPage({ params }: PageProps) {
       <div className="mt-8">
         <MediaManager
           productId={product.id}
-          slug={product.slug}
           initialMedia={media}
         />
       </div>
@@ -337,7 +338,6 @@ export default async function ProductEditorPage({ params }: PageProps) {
       <div className="mt-8">
         <DeliverableManager
           productId={product.id}
-          slug={product.slug}
           initialDeliverables={deliverables}
         />
       </div>

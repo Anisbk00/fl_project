@@ -1,68 +1,79 @@
 -- ============================================================================
--- catalog_rls.test.sql — pgTAP tests for the production access matrix.
--- ----------------------------------------------------------------------------
--- Run against a real Supabase project:
---   supabase db test
--- These are the production equivalents of tests/catalog/db-access.test.ts.
--- NOT runnable in the SQLite sandbox; documented as a blocker.
+-- catalog_rls.test.sql — security-matrix regression tests (pgTAP).
+-- Runs in CI (`supabase db test`) against a fresh local Supabase, so every
+-- migration's grants/policies are exercised exactly as deployed.
+-- Each block pins a real exploit that was fixed; do not weaken to make green.
 -- ============================================================================
 
 begin;
-  select plan(9);
+  select plan(15);
 
-  -- Test fixtures: an admin allow-list row + products in each state.
-  -- (Assumes an auth.users row exists for the test admin id.)
-  insert into public.admin_users (user_id) values
-    ('00000000-0000-0000-0000-0000000000aa')
-    on conflict do nothing;
-
-  insert into public.genres (slug, name) values ('house','House')
-    on conflict (slug) do nothing;
-
-  insert into public.products (slug, title, short_description, product_type, lifecycle, rights_status, price, price_currency)
+  -- Fixtures (as the table owner; satisfy every CHECK constraint).
+  insert into public.products (id, slug, title, short_description, product_type, lifecycle, rights_status, price, price_currency, published_at)
   values
-    ('pub-original','P1','d','project_file','published','original',1900,'USD'),
-    ('draft-original','P2','d','stems','draft','original',900,'USD'),
-    ('archived-licensed','P3','d','sample_pack','archived','licensed',1500,'USD'),
-    ('unreviewed-draft','P4','d','remake','draft','unreviewed',1900,'USD'),
-    ('pub-rejected','P5','d','stems','published','rejected',1900,'USD')
-  on conflict (slug) do nothing;
+    ('10000000-0000-4000-8000-000000000001','t-pub','Pub','d','stems','published','original',1500,'USD',now()),
+    ('10000000-0000-4000-8000-000000000002','t-draft','Draft','d','stems','draft','original',1500,'USD',null),
+    ('10000000-0000-4000-8000-000000000003','t-unreviewed','Unrev','d','stems','draft','unreviewed',1500,'USD',null);
+  insert into public.product_deliverables (id, product_id, storage_object_path, customer_filename, mime_type, bytes)
+  values ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','products/x/v1/a.zip','a.zip','application/zip',10);
 
-  set role anon;
-  -- 1. anon sees only the published + rights-cleared product.
-  select is(
-    (select count(*) from public.products),
-    1::bigint,
-    'anon sees only published + rights-cleared products'
-  );
-  -- 2. anon cannot read product_deliverables at all.
-  select is(
-    (select count(*) from public.product_deliverables),
-    0::bigint,
-    'anon cannot read any deliverables'
-  );
-  -- 3. anon cannot read admin_users.
-  select is(
-    (select count(*) from public.admin_users),
-    0::bigint,
-    'anon cannot read the admin allow-list'
-  );
-
+  -- --- anon: public catalog only -------------------------------------------
+  set local role anon;
+  select is((select count(*) from public.products where slug like 't-%'), 1::bigint,
+    'anon sees only the published, rights-cleared product');
+  select throws_ok($$ select 1 from public.product_deliverables $$, '42501', null,
+    'anon has no privilege on private deliverables');
+  select throws_ok($$ select 1 from public.product_rights $$, '42501', null,
+    'anon has no privilege on private rights evidence');
+  select throws_ok($$ select 1 from public.orders $$, '42501', null,
+    'anon has no privilege on orders');
+  select throws_ok($$ select 1 from public.download_access_tokens $$, '42501', null,
+    'anon has no privilege on download tokens');
   reset role;
-  set role authenticated;
-  -- 4. A non-admin authenticated user still cannot mutate.
+
+  -- --- authenticated non-admin (any self-signed-up user) --------------------
+  set local role authenticated;
+  select set_config('request.jwt.claims',
+    '{"sub":"30000000-0000-4000-8000-000000000001","role":"authenticated","aal":"aal2"}', true);
+
+  -- C1: forging a paid order / entitlements via RPC.
+  select throws_ok(
+    $$ select public.mark_order_paid(gen_random_uuid(),'cs','pi','ch',false,'test','usd',0,0,0,0,0,'a@b.c','FL-X','[]'::jsonb) $$,
+    '42501', null, 'non-admin cannot call mark_order_paid');
+  select throws_ok($$ select public.after_order_paid_extension(gen_random_uuid()) $$,
+    '42501', null, 'non-admin cannot mint entitlements');
+  select throws_ok($$ select public.revoke_fulfillment(gen_random_uuid(),'revoke','x') $$,
+    '42501', null, 'non-admin cannot revoke a buyer''s access');
+  select throws_ok($$ select public.rate_limit_hit('k',1,60) $$,
+    '42501', null, 'non-admin cannot reset/abuse the rate limiter');
+
+  select is((select count(*) from public.orders), 0::bigint,
+    'non-admin reads zero orders (RLS)');
+  select is((select count(*) from public.product_deliverables), 0::bigint,
+    'non-admin reads zero deliverables (RLS)');
   select throws_ok(
     $$ insert into public.products (slug,title,short_description,product_type,price,price_currency)
-       values ('intruder','x','d','stems',100,'USD') $$,
-    'non-admin insert is rejected'
-  );
-
+       values ('t-intruder','x','d','stems',100,'USD') $$,
+    '42501', null, 'non-admin cannot create products');
+  select is((select ok from public.publish_product('10000000-0000-4000-8000-000000000002', 1)), false,
+    'non-admin publish is refused by the RPC''s own admin check');
   reset role;
-  -- 5-8. The publication CHECK rejects an unreviewed publish attempt.
+
+  -- --- Integrity guards (as owner) -----------------------------------------
   select throws_ok(
-    $$ update public.products set lifecycle='published' where slug='unreviewed-draft' $$,
-    'cannot publish an unreviewed product (CHECK constraint)'
-  );
+    $$ update public.products set lifecycle = 'published', published_at = now()
+       where id = '10000000-0000-4000-8000-000000000003' $$,
+    '23514', null, 'an unreviewed product cannot be published (CHECK)');
+
+  -- A purchased deliverable version cannot be deleted (buyers need it).
+  insert into public.orders (id, order_number, checkout_attempt_id, stripe_session_id, currency, subtotal, total)
+    values ('40000000-0000-4000-8000-000000000001','FL-TEST0001', gen_random_uuid(), 'cs_test_x', 'usd', 1500, 1500);
+  insert into public.order_items (order_id, product_id, product_row_version, deliverable_asset_id, title, slug, product_type, unit_amount, currency)
+    values ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,
+            '20000000-0000-4000-8000-000000000001','Pub','t-pub','stems',1500,'usd');
+  select throws_ok(
+    $$ delete from public.product_deliverables where id = '20000000-0000-4000-8000-000000000001' $$,
+    '23503', null, 'a purchased deliverable cannot be deleted');
 
   select finish();
 rollback;

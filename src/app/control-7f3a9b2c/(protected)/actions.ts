@@ -13,7 +13,6 @@ import {
   productFormSchema,
   type ActionResult,
   type FieldErrors,
-  type ProductFormValues,
 } from "@/lib/admin/product-schema";
 import { getServerClient } from "@/lib/supabase/server-client";
 import { requireAdminOrFailure } from "@/lib/auth/require-admin";
@@ -29,23 +28,8 @@ import {
 
 const SLUG_REGEX = /^(?!-)[a-z0-9]+(?:-[a-z0-9]+)*(?<!-)$/;
 
-/**
- * `@supabase/ssr@0.6.x` creates the server client via
- * `SupabaseClient<Database, SchemaName, Schema>` — but the `SupabaseClient`
- * class declares its generics as `<Database, SchemaNameOrClientOptions,
- * SchemaName, Schema, ClientOptions>`. The third positional generic the SSR
- * factory passes is actually a full `Schema` object, which lands in the
- * `SchemaName` slot and breaks `.rpc()` / `.from().insert()` generic
- * inference (Args default to `never`, so calls won't type-check).
- *
- * Workaround: cast back to a normally-typed `SupabaseClient<Database>` here.
- * The runtime client is unchanged; this is purely a generic-shape fix. When
- * `@supabase/ssr` is updated to match `@supabase/supabase-js@2.116+`'s
- * generic positions, this cast can be removed.
- */
 async function adminClient(): Promise<SupabaseClient<Database>> {
-  const c = await getServerClient();
-  return c as unknown as SupabaseClient<Database>;
+  return getServerClient();
 }
 
 // ---------------------------------------------------------------------------
@@ -547,19 +531,21 @@ const MEDIA_KIND_TO_ROLE: Record<MediaKind, AssetRole> = {
   video_preview: "video_preview",
 };
 
-/** Strict canonical shape: `products/<slug>/<kind>-<uuid>.<allowed-ext>`. */
+/** Strict canonical shape: `products/<product-id>/<kind>-<uuid>.<allowed-ext>`.
+ * Keyed by the immutable product UUID (not the editable slug), so renaming a
+ * product never orphans its files. */
 const MEDIA_PATH_REGEX: Record<MediaKind, RegExp> = {
   cover_image:
-    /^products\/([a-z0-9-]+)\/cover_image-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(png|webp|jpe?g)$/,
+    /^products\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/cover_image-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(png|webp|jpe?g)$/,
   audio_preview:
-    /^products\/([a-z0-9-]+)\/audio_preview-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(mp3|m4a|aac)$/,
+    /^products\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/audio_preview-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(mp3|m4a|aac)$/,
   video_preview:
-    /^products\/([a-z0-9-]+)\/video_preview-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(mp4|webm)$/,
+    /^products\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/video_preview-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(mp4|webm)$/,
 };
 
-/** Strict canonical shape: `products/<slug>/v<N>/<sanitized-name>.zip`. */
+/** Strict canonical shape: `products/<product-id>/v<N>/<sanitized-name>.zip`. */
 const DELIVERABLE_PATH_REGEX =
-  /^products\/([a-z0-9-]+)\/v(\d{1,6})\/[a-z0-9][a-z0-9._-]{0,250}\.zip$/;
+  /^products\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/v(\d{1,6})\/[a-z0-9][a-z0-9._-]{0,250}\.zip$/;
 
 const SHA_256_REGEX = /^[a-f0-9]{64}$/;
 
@@ -568,7 +554,9 @@ const mediaInputSchema = z
     kind: z.enum(MEDIA_KIND_VALUES),
     bucket: z.string().trim().min(1).max(64),
     storageObjectPath: z.string().trim().max(512).optional().nullable(),
-    externalUrl: z.string().trim().url().max(2048).optional().nullable(),
+    externalUrl: z.string().trim().url().max(2048)
+      .refine((u) => u.startsWith("https://"), "External URLs must use https.")
+      .optional().nullable(),
     mimeType: z.string().trim().max(200).optional().nullable(),
     bytes: z.number().int().min(0).optional().nullable(),
     altText: z.string().trim().max(500).optional().nullable(),
@@ -657,7 +645,7 @@ export async function registerMedia(
     const row: Database["public"]["Tables"]["product_media"]["Insert"] = {
       product_id: productId,
       kind: v.kind,
-      bucket: v.bucket,
+      bucket: "product-public", // fixed server-side; never client-chosen
       storage_object_path: null,
       external_url: v.externalUrl,
       mime_type: v.mimeType ?? null,
@@ -694,10 +682,10 @@ export async function registerMedia(
         "The storage path doesn't match the expected pattern for this kind.",
     };
   }
-  if (match[1] !== product.slug) {
+  if (match[1] !== product.id) {
     return {
       ok: false,
-      message: "The storage path's slug doesn't match this product.",
+      message: "The storage path doesn't belong to this product.",
     };
   }
   if (v.mimeType && !MIME_ALLOWLISTS[role].includes(v.mimeType)) {
@@ -716,7 +704,7 @@ export async function registerMedia(
   const row: Database["public"]["Tables"]["product_media"]["Insert"] = {
     product_id: productId,
     kind: v.kind,
-    bucket: v.bucket,
+    bucket: "product-public", // fixed server-side; never client-chosen
     storage_object_path: path,
     external_url: null,
     mime_type: v.mimeType ?? null,
@@ -814,18 +802,7 @@ export async function deleteMedia(mediaId: string): Promise<ActionResult> {
     return { ok: false, message: "That media row does not exist." };
   }
 
-  // Best-effort Storage delete. A leaked Storage object is a minor issue; a
-  // leaked DB row pointing at a non-existent object is worse. If the Storage
-  // delete fails (network blip, RLS surprise), we still drop the DB row so
-  // the UI doesn't show a dangling reference.
-  if (row.storage_object_path) {
-    try {
-      await client.storage.from(row.bucket).remove([row.storage_object_path]);
-    } catch {
-      // swallow — proceed to delete the DB row regardless
-    }
-  }
-
+  // DB row first, so a failure never leaves a row pointing at a deleted file.
   const { error: deleteErr } = await client
     .from("product_media")
     .delete()
@@ -837,7 +814,9 @@ export async function deleteMedia(mediaId: string): Promise<ActionResult> {
     };
   }
   revalidatePath(`${ADMIN_PRODUCTS_PATH}/${row.product_id}`);
-  return { ok: true };
+  return row.storage_object_path
+    ? removeStorageObject(client, row.bucket, row.storage_object_path)
+    : { ok: true };
 }
 
 /**
@@ -896,13 +875,13 @@ export async function registerDeliverable(
     return {
       ok: false,
       message:
-        "The storage path doesn't match the expected pattern `products/<slug>/v<N>/<name>.zip`.",
+        "The storage path doesn't match the expected pattern `products/<product-id>/v<N>/<name>.zip`.",
     };
   }
-  if (match[1] !== product.slug) {
+  if (match[1] !== product.id) {
     return {
       ok: false,
-      message: "The storage path's slug doesn't match this product.",
+      message: "The storage path doesn't belong to this product.",
     };
   }
   if (Number.parseInt(match[2] ?? "0", 10) !== v.version) {
@@ -933,7 +912,7 @@ export async function registerDeliverable(
 
   const row: Database["public"]["Tables"]["product_deliverables"]["Insert"] = {
     product_id: productId,
-    bucket: v.bucket,
+    bucket: "product-private", // fixed server-side; never client-chosen
     storage_object_path: v.storageObjectPath,
     customer_filename: v.customerFilename,
     mime_type: v.mimeType,
@@ -1002,10 +981,10 @@ export async function toggleDeliverableActive(
 }
 
 /**
- * deleteDeliverable — delete the Storage object AND the DB row. Used when an
- * operator wants to fully remove a deliverable (e.g. it was uploaded by
- * mistake, or the file is being replaced). The buyer-facing download path
- * checks `active=true` so this is safe even mid-session.
+ * deleteDeliverable — delete a never-purchased deliverable (DB row, then the
+ * Storage object). Purchased versions are protected by an FK: buyers download
+ * the exact version they bought, active or not, so those can only be
+ * deactivated (which stops new sales of that version).
  */
 export async function deleteDeliverable(
   deliverableId: string,
@@ -1035,13 +1014,8 @@ export async function deleteDeliverable(
     return { ok: false, message: "That deliverable does not exist." };
   }
 
-  // Best-effort Storage delete — proceed to drop the DB row regardless.
-  try {
-    await client.storage.from(row.bucket).remove([row.storage_object_path]);
-  } catch {
-    // swallow — proceed to delete the DB row
-  }
-
+  // DB row first: the FK from order items (0012) refuses to delete a version
+  // someone bought, so the file is only removed once nothing references it.
   const { error: deleteErr } = await client
     .from("product_deliverables")
     .delete()
@@ -1049,10 +1023,29 @@ export async function deleteDeliverable(
   if (deleteErr) {
     return {
       ok: false,
-      message: friendlyPostgresError(deleteErr, "delete the deliverable"),
+      message:
+        deleteErr.code === "23503"
+          ? "This file version has been purchased, so it can't be deleted — buyers still download it. Deactivate it instead to stop selling it."
+          : friendlyPostgresError(deleteErr, "delete the deliverable"),
     };
   }
   revalidatePath(`${ADMIN_PRODUCTS_PATH}/${row.product_id}`);
+  return removeStorageObject(client, row.bucket, row.storage_object_path);
+}
+
+/** Remove a Storage object after its DB row is gone; report failure honestly. */
+async function removeStorageObject(
+  client: SupabaseClient<Database>,
+  bucket: string,
+  path: string,
+): Promise<ActionResult> {
+  const { error } = await client.storage.from(bucket).remove([path]);
+  if (error) {
+    return {
+      ok: false,
+      message: `The record was removed, but the stored file could not be deleted (${bucket}/${path}). Remove it from Supabase Storage manually.`,
+    };
+  }
   return { ok: true };
 }
 

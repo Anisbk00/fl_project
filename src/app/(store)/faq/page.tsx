@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Container, Section } from "@/components/site/container";
 import { SectionHeading } from "@/components/site/section-heading";
 import { LinkButton } from "@/components/site/button";
-import { siteConfig } from "@/lib/site-config";
 
 export const metadata: Metadata = {
   title: "FAQ",
@@ -35,8 +34,8 @@ const faqs: ReadonlyArray<{ q: string; a: string }> = [
     a: "Draft refund policy text is at /legal/refunds and is under review. Statutory consumer rights in your jurisdiction are not waived by anything here.",
   },
   {
-    q: "When will checkout and delivery actually work?",
-    a: "They arrive in later implementation steps. Right now the storefront shell is being built; nothing unfinished is presented as working. Watch the catalog for the production resources that are ready.",
+    q: "How do I get my files after paying?",
+    a: "As soon as Stripe confirms your payment, we email a private download link to the address you entered at checkout. The link works for 72 hours; each file can be downloaded several times, and every download uses a fresh link that expires after two minutes. Nothing is attached to the email.",
   },
 ];
 

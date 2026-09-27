@@ -52,12 +52,11 @@ export default function AboutPage() {
           factually for compatibility only — never to imply affiliation or
           endorsement.
         </p>
-        <h2>What is live right now</h2>
+        <h2>How buying works</h2>
         <p>
-          This is a storefront shell in progress. You can browse a typed
-          presentation catalog. Live catalog data, secure guest checkout, and
-          verified delivery arrive in later steps. Nothing unfinished is
-          presented as working.
+          No account needed. Add products to your cart and pay on Stripe’s
+          secure checkout page — we never see your card details. Once Stripe
+          confirms the payment, we email you a private download link.
         </p>
       </Prose>
     </>

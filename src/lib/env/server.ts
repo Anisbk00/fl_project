@@ -61,10 +61,9 @@ function readServerEnv(): ServerEnv {
   // parse() throws ZodError on invalid input; we rethrow with a non-secret
   // message so the missing/malformed VARIABLE name is surfaced without its
   // value ever being logged.
-  const parsed = serverEnvSchema.safeParse({
-    SUPABASE_URL: process.env.SUPABASE_URL,
-    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
-  });
+  // Pass the whole environment: zod picks only the declared keys. (Passing a
+  // hand-picked subset silently defaulted every Stripe/Resend/cron secret to "".)
+  const parsed = serverEnvSchema.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)

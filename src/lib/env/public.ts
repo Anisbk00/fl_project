@@ -55,6 +55,13 @@ export const publicEnvSchema = z.object({
     .trim()
     .or(z.literal(""))
     .default(""),
+  /** Monitored support mailbox, shown on the site and in delivery emails. */
+  NEXT_PUBLIC_SUPPORT_EMAIL: z
+    .string()
+    .trim()
+    .email("NEXT_PUBLIC_SUPPORT_EMAIL must be an email address when set")
+    .or(z.literal(""))
+    .default(""),
 });
 
 export type PublicEnv = z.infer<typeof publicEnvSchema>;
@@ -76,5 +83,6 @@ export const publicEnv: Readonly<PublicEnv> = Object.freeze(
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: emptyToUndefined(
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     ),
+    NEXT_PUBLIC_SUPPORT_EMAIL: emptyToUndefined(process.env.NEXT_PUBLIC_SUPPORT_EMAIL),
   }),
 );

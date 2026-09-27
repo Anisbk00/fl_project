@@ -6,6 +6,8 @@ import { Container, Section, Grid } from "@/components/site/container";
 import { SectionHeading } from "@/components/site/section-heading";
 import { Badge } from "@/components/site/badge";
 import { Price } from "@/components/site/price";
+import { Button } from "@/components/site/button";
+import { addToCartAction } from "@/app/(store)/cart/actions";
 import { ProductCard } from "@/components/site/product-card";
 import { ProductArtwork } from "@/components/site/product-artwork";
 import { AudioPreview } from "@/components/site/audio-preview";
@@ -149,7 +151,7 @@ function ProductView({
           <div className="grid gap-8 lg:grid-cols-[1fr_1.05fr] lg:items-start">
             {/* Cover + preview */}
             <div className="flex flex-col gap-4">
-              <ProductArtwork seed={product.artworkSeed} coverUrl={cover} label={product.title} className="rounded-xl border border-line" />
+              <ProductArtwork seed={product.artworkSeed} coverUrl={cover} label={product.title} className="rounded-xl border border-line" sizes="(min-width: 1024px) 50vw, 100vw" priority />
               {audioSrc ? (
                 <AudioPreview src={audioSrc} id={`detail-${product.slug}`} label={product.title} variant="full" />
               ) : (
@@ -168,12 +170,15 @@ function ProductView({
               </div>
               <h1 className="t-display text-ink">{product.title}</h1>
               <p className="t-body-lg text-ink-secondary">{product.shortDescription}</p>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4">
                 <Price minorUnits={product.price} currency={product.currency} compareAtMinorUnits={product.compareAtPrice} />
-                {/* No purchase/checkout control in Step 3 — commerce arrives in Step 5. */}
+                <form action={addToCartAction}>
+                  <input type="hidden" name="productId" value={product.id} />
+                  <Button type="submit">{product.free ? "Get it free" : "Add to cart"}</Button>
+                </form>
               </div>
               <p className="t-caption text-ink-muted">
-                Checkout arrives in Step 5. Until then, this page shows full compatibility details — no purchase button.
+                Secure checkout by Stripe · no account needed · files delivered by email after payment.
               </p>
 
               {/* Compatibility summary (before any future purchase area) */}

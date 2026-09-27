@@ -73,6 +73,8 @@ export interface ProductMediaVM {
 
 /** Full public product detail view model (one product page). */
 export interface ProductDetailVM {
+  /** Product UUID — used only as the add-to-cart reference. */
+  id: string;
   slug: string;
   title: string;
   shortDescription: string;

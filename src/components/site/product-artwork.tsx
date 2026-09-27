@@ -1,4 +1,6 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { publicEnv } from "@/lib/env/public";
 
 /**
  * Original, locally authored abstract cover treatment.
@@ -39,12 +41,18 @@ export function ProductArtwork({
   className,
   label,
   coverUrl,
+  sizes = "(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw",
+  priority = false,
 }: {
   seed: string;
   className?: string;
   label?: string;
-  /** Live public cover URL. When provided, an <img> renders; else abstract SVG. */
+  /** Live public cover URL. When provided, the cover renders; else abstract SVG. */
   coverUrl?: string | null;
+  /** Rendered width hints for responsive image variants. */
+  sizes?: string;
+  /** Load eagerly (use for the above-the-fold product hero / LCP image). */
+  priority?: boolean;
 }) {
   if (coverUrl) {
     return (
@@ -54,20 +62,28 @@ export function ProductArtwork({
           className,
         )}
       >
-        <img
+        <Image
           src={coverUrl}
           alt={label ? `${label} — cover` : "Product cover"}
-          loading="lazy"
-          decoding="async"
-          className="absolute inset-0 h-full w-full object-cover"
+          fill
+          sizes={sizes}
+          priority={priority}
+          // Supabase-hosted covers are resized by the image optimizer; external
+          // https covers (not in remotePatterns) are served as-is.
+          unoptimized={!isOptimizable(coverUrl)}
+          className="object-cover"
         />
-        <AbstractWaveform seed={seed} className="absolute inset-0" />
       </div>
     );
   }
   return (
     <AbstractWaveform seed={seed} className={cn("aspect-[4/3] w-full bg-surface-inset", className)} label={label} />
   );
+}
+
+function isOptimizable(url: string): boolean {
+  const base = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
+  return !!base && url.startsWith(`${base.replace(/\/$/, "")}/storage/v1/object/public/`);
 }
 
 function AbstractWaveform({

@@ -18,7 +18,6 @@ import {
   EXTENSION_ALLOWLISTS,
   MAX_BYTES,
   MIME_ALLOWLISTS,
-  SIGNATURE_ALLOWLISTS,
   detectFileSignature,
   exceedsSize,
   extensionOf,
@@ -62,7 +61,6 @@ export interface DeliverableRow {
 
 interface DeliverableManagerProps {
   productId: string;
-  slug: string;
   initialDeliverables: DeliverableRow[];
 }
 
@@ -137,7 +135,6 @@ const INITIAL_STATE: UploadState = {
  */
 export function DeliverableManager({
   productId,
-  slug,
   initialDeliverables,
 }: DeliverableManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -223,14 +220,13 @@ export function DeliverableManager({
       return;
     }
 
-    // 4) Construct the Storage path. Server revalidates that the slug in
-    //    the path === the product's actual slug (looked up from the DB by
-    //    productId — the client can't lie about it).
+    // 4) Construct the Storage path, keyed by the immutable product id. The
+    //    server re-validates the id segment and forces the private bucket.
     const ext = extCheck.extension || extensionOf(file.name) || "zip";
     const safeName = sanitizeFilenameForPath(file.name);
     // If the sanitizer stripped the extension, re-append it.
     const stem = safeName.endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`;
-    const storageObjectPath = `products/${slug}/v${nextVersion}/${stem}`;
+    const storageObjectPath = `products/${productId}/v${nextVersion}/${stem}`;
     const mimeType =
       file.type && MIME_ALLOWLISTS[ROLE].includes(file.type)
         ? file.type

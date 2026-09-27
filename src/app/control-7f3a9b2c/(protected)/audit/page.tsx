@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireAdminOrRedirect } from "@/lib/auth/require-admin";
 import { Container } from "@/components/site/container";
 import { SectionHeading } from "@/components/site/section-heading";
 import { EmptyState, ErrorState } from "@/components/site/state";
@@ -46,6 +47,7 @@ function relativeTime(iso: string): string {
 }
 
 export default async function AuditPage() {
+  await requireAdminOrRedirect({ aal2: true });
   let rows: AuditRow[] = [];
   let loadError: string | null = null;
 

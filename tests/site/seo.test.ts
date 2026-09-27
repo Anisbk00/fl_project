@@ -9,6 +9,7 @@ import {
 import type { ProductDetailVM } from "@/features/catalog/view-models";
 
 const product: ProductDetailVM = {
+  id: "00000000-0000-4000-8000-000000000001",
   slug: "vector-drift",
   title: "Vector Drift",
   shortDescription: "Original project.",

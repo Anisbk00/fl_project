@@ -1,47 +1,56 @@
+import "server-only";
+import { createHash } from "node:crypto";
+import { getPrivilegedClient } from "@/lib/supabase/privileged";
+
 /**
- * Rate limiting — Step 1 DOCUMENTATION STUB ONLY.
+ * Durable, serverless-safe rate limiting backed by Postgres
+ * (`rate_limit_hit`, migration 0010). One atomic upsert per hit, so every
+ * Vercel instance shares the same counter — no in-memory state.
  *
- * The plan is explicit: "Add placeholders/documentation for later rate
- * limiting; do not pretend an in-memory limiter in a serverless process is
- * production protection." A single in-memory counter inside an ephemeral
- * Vercel Function instance provides NO real protection against distributed
- * abuse, because each instance has its own memory and instances scale to
- * zero between requests.
- *
- * A real rate limiter for this store (Step 5 checkout, Step 6 downloads,
- * Step 8 hardening) must be backed by shared, durable state — e.g. an
- * Upstash Redis counter, a Supabase row incremented in a transaction, or
- * Vercel's edge rate-limit product — keyed by IP + delivery email + route.
- *
- * This file deliberately provides ONLY types + a documented TODO so future
- * call sites have a stable signature to implement against. It does NOT
- * provide a fake in-memory limiter.
+ * Keys hash the client IP; raw IPs are never stored.
  */
 
-export interface RateLimitInput {
-  /** A stable identifier (IP, hashed email, or admin user id). */
-  key: string;
-  /** The protected route/action, e.g. "checkout:create", "download:sign". */
+export interface RateLimitRule {
+  /** Protected action, e.g. "checkout:create". */
   action: string;
+  limit: number;
+  windowSeconds: number;
 }
 
-export interface RateLimitResult {
-  allowed: boolean;
-  /** Remaining attempts in the current window. */
-  remaining: number;
-  /** Epoch ms when the window resets. */
-  resetAt: number;
+export const RATE_LIMITS = {
+  cartMutate: { action: "cart:mutate", limit: 60, windowSeconds: 60 },
+  checkoutCreate: { action: "checkout:create", limit: 10, windowSeconds: 600 },
+  downloadExchange: { action: "download:exchange", limit: 10, windowSeconds: 600 },
+  downloadSign: { action: "download:sign", limit: 30, windowSeconds: 600 },
+} as const satisfies Record<string, RateLimitRule>;
+
+/** Best-effort client IP from Vercel's proxy headers. */
+export function clientIp(headers: Headers): string {
+  return (
+    headers.get("x-real-ip") ??
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    "unknown"
+  );
+}
+
+export function rateLimitKey(rule: RateLimitRule, ip: string): string {
+  const digest = createHash("sha256").update(ip).digest("hex").slice(0, 32);
+  return `${rule.action}:${digest}`;
 }
 
 /**
- * Not implemented in Step 1. Implementing this against durable shared state
- * is a Step 5 / Step 8 task. Callers must not assume it protects anything
- * until that wiring lands.
+ * Returns true when the request may proceed. Fails CLOSED: if the limiter
+ * cannot be reached the request is refused rather than let through unmetered.
  */
-export async function checkRateLimit(
-  _input: RateLimitInput,
-): Promise<RateLimitResult> {
-  throw new Error(
-    "Rate limiting is not implemented in Step 1. See src/lib/security/rate-limit.ts.",
-  );
+export async function checkRateLimit(rule: RateLimitRule, headers: Headers): Promise<boolean> {
+  try {
+    const { data, error } = await getPrivilegedClient().rpc("rate_limit_hit", {
+      p_key: rateLimitKey(rule, clientIp(headers)),
+      p_limit: rule.limit,
+      p_window_seconds: rule.windowSeconds,
+    });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
 }

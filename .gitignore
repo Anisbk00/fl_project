@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — user authorized pushing .env (no real secrets in this project)
-# .env*
+# env files: never commit real values; only the template is tracked
+.env*
+!.env.example
 
 # vercel
 .vercel
@@ -56,10 +57,5 @@ server.log
 # Step 2 review artifacts (transient screenshots/scan reports)
 review-*.png
 tool-results/
-# Env files with secrets
-.env.local
-.env
-.env.local
-.env
 agent-ctx/
 dev.pid

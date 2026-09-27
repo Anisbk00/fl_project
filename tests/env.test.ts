@@ -60,6 +60,19 @@ describe("server environment (Supabase-only; no local DB)", () => {
     restore();
   });
 
+  it("reads Stripe/Resend/cron secrets, not just the Supabase pair", () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_x";
+    process.env.RESEND_API_KEY = "re_x";
+    process.env.CRON_SECRET = "c";
+    const env = getServerEnv();
+    expect(env.STRIPE_SECRET_KEY).toBe("sk_test_x");
+    expect(env.STRIPE_WEBHOOK_SECRET).toBe("whsec_x");
+    expect(env.RESEND_API_KEY).toBe("re_x");
+    expect(env.CRON_SECRET).toBe("c");
+    restore();
+  });
+
   it("never exposes a local DATABASE_URL (there is no local DB)", () => {
     expect(
       (getServerEnv() as unknown as Record<string, unknown>).DATABASE_URL,

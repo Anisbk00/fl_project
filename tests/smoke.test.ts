@@ -1,27 +1,27 @@
 import { describe, it, expect } from "bun:test";
-import { securityHeaders } from "@/lib/security/headers";
+import { noStoreHeaders, PRIVATE_ROUTE_SOURCES, securityHeaders } from "@/lib/security/headers";
 
-describe("security headers (smoke)", () => {
-  it("includes the baseline protective headers", () => {
-    const keys = securityHeaders.map((h) => h.key);
-    expect(keys).toContain("X-Content-Type-Options");
-    expect(keys).toContain("X-Frame-Options");
-    expect(keys).toContain("Referrer-Policy");
-    expect(keys).toContain("Permissions-Policy");
+const prod = securityHeaders({ supabaseUrl: "https://abc.supabase.co", dev: false });
+const dev = securityHeaders({ supabaseUrl: "", dev: true });
+const value = (list: { key: string; value: string }[], key: string) => list.find((h) => h.key === key)?.value;
+
+describe("security headers", () => {
+  it("ships the baseline protective headers", () => {
+    expect(value(prod, "X-Content-Type-Options")).toBe("nosniff");
+    expect(value(prod, "X-Frame-Options")).toBe("DENY");
+    expect(value(prod, "Referrer-Policy")).toBe("strict-origin-when-cross-origin");
+    expect(value(prod, "Content-Security-Policy")).toBeDefined();
   });
 
-  it("sets X-Content-Type-Options to nosniff", () => {
-    const h = securityHeaders.find((x) => x.key === "X-Content-Type-Options");
-    expect(h?.value).toBe("nosniff");
+  it("sends HSTS in production only (never over local http)", () => {
+    expect(value(prod, "Strict-Transport-Security")).toContain("max-age=63072000");
+    expect(value(dev, "Strict-Transport-Security")).toBeUndefined();
   });
 
-  it("sets X-Frame-Options to DENY (clickjacking defense-in-depth)", () => {
-    const h = securityHeaders.find((x) => x.key === "X-Frame-Options");
-    expect(h?.value).toBe("DENY");
-  });
-
-  it("does NOT ship a Content-Security-Policy yet (deferred to Step 8)", () => {
-    const keys = securityHeaders.map((h) => h.key);
-    expect(keys).not.toContain("Content-Security-Policy");
+  it("marks every private area no-store", () => {
+    expect(PRIVATE_ROUTE_SOURCES).toContain("/downloads");
+    expect(PRIVATE_ROUTE_SOURCES).toContain("/api/:path*");
+    expect(PRIVATE_ROUTE_SOURCES.some((s) => s.startsWith("/control-"))).toBe(true);
+    expect(value(noStoreHeaders, "Cache-Control")).toContain("no-store");
   });
 });

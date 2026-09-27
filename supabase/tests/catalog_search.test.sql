@@ -3,8 +3,7 @@
 -- search/detail/related functions and RLS deny rules.
 -- ----------------------------------------------------------------------------
 -- Run with:  supabase db test
--- NOT runnable in the SQLite sandbox (no Docker/Supabase CLI); documented as a
--- blocker. The committed SQL is the production source of truth.
+-- Runs in CI against a fresh local Supabase with seed.sql applied.
 -- ============================================================================
 
 begin;
@@ -72,16 +71,16 @@ begin;
     'search_products genres aggregate is well-formed'
   );
 
-  -- 8. anon still cannot read product_deliverables or admin_users directly.
-  select is(
-    (select count(*) from public.product_deliverables),
-    0::bigint,
-    'anon cannot read product_deliverables (RLS deny)'
+  -- 8. anon has no table privilege at all on private tables (not just 0 rows).
+  select throws_ok(
+    $$ select count(*) from public.product_deliverables $$,
+    '42501', null,
+    'anon cannot read product_deliverables'
   );
-  select is(
-    (select count(*) from public.admin_users),
-    0::bigint,
-    'anon cannot read admin_users (RLS deny)'
+  select throws_ok(
+    $$ select count(*) from public.admin_users $$,
+    '42501', null,
+    'anon cannot read admin_users'
   );
 
   select finish();

@@ -1,180 +1,63 @@
-# Music Project Store
+# FL Store
 
-A worldwide digital-product store for music producers: original DAW project files,
-legally cleared educational remakes, original stems, and original sample packs.
-Inspired by the product category popularized by stores like FLPStudio.com, but
-with original code, design, copy, branding, and assets — and deliberately
-improving on the reference weaknesses (broken links, hidden compatibility info,
-fabricated reviews, keyword stuffing, etc.).
+A digital-download store for music-production assets (FL Studio projects, stems, WAVs, sample packs). Customers buy as guests; only allow-listed administrators sign in.
 
-> **Status:** Step 1 of 9 — foundation, architecture, and secure catalog data
-> layer only. No storefront, cart, checkout, admin CMS, or fulfillment exists
-> yet. See [`docs/ROADMAP.md`](./docs/ROADMAP.md).
+**Stack:** Next.js 16 (App Router, TypeScript strict) · Supabase (Postgres, Auth, Storage, RLS) · Stripe-hosted Checkout · Resend · Vercel · bun.
 
-## Important: data platform
+## How a purchase works
 
-The store uses **Supabase only** for data (Postgres + Auth + Storage). There is
-**no local database and no Prisma** — nothing else is substituted in. The
-package manager for this development environment is **bun** (the plan specifies
-pnpm); `packageManager` is pinned to `bun@1.3.14` and `bun.lock` is committed.
+```
+Product page ──Add to cart──▶ /cart (server-owned guest cart, HttpOnly cookie)
+   └─Checkout─▶ server re-reads prices from Postgres ─▶ Stripe Checkout Session
+Stripe ──webhook (signed)──▶ /api/stripe/webhook ─▶ webhook_inbox (idempotent)
+   └─▶ mark_order_paid() — one transaction: order + items + entitlements + email job
+   └─▶ delivery worker ─▶ Resend (idempotency key) ─▶ email with a 72 h access link
+Buyer clicks link ─▶ /downloads/access ─▶ 30-min session cookie
+   └─▶ Download ─▶ quota check ─▶ 120-second signed URL to a PRIVATE bucket
+Refund / dispute webhooks ─▶ revoke or hold access
+```
 
-The Supabase SQL migrations (enums, CHECK constraints, RLS policies, the
-`is_admin()` SECURITY DEFINER function, storage bucket policies) are committed
-under `supabase/migrations/` and are the source of truth. A hand-authored
-TypeScript `Database` type (`src/types/database.ts`) mirrors them so the
-application type-checks and builds **without a live Supabase project**; in a
-real project, regenerate it with `supabase gen types`.
+Sources of truth: products/orders in **Postgres**, payment status from **Stripe via verified webhooks only**, files in **private Supabase Storage**, admin identity in **Supabase Auth** (AAL2/TOTP required).
 
-## Prerequisites
+## Local development
 
-- **Node.js 24.x** (pinned via `engines` in `package.json` and `.node-version`)
-- **bun 1.3.x** (the package manager for this environment)
-- **Supabase CLI** + **Docker** — required to run the committed Supabase
-  migrations/pgTAP tests against a local Supabase project. **Not available in
-  this sandbox**; see "Blockers" below.
-
-## Getting started
+Requirements: Node 24, bun 1.3.x, a Supabase project, Stripe + Resend **test** keys.
 
 ```bash
-# 1. Install dependencies (bun.lock is committed)
 bun install
-
-# 2. Copy the environment template and fill in values (real secrets never committed)
-cp .env.example .env.local
-#   The Step 1 placeholder home page builds and boots with NO secrets. Supabase
-#   URL/publishable/secret keys are required once you link a project (Step 3+).
-
-# 3. (With Docker + Supabase CLI) start local Supabase and apply migrations:
-supabase start
-supabase db reset         # applies all migrations in supabase/migrations/
-bun run db:types          # regenerates src/types/database.generated.ts from the live DB
-
-# 4. Run the checks
-bun run lint             # ESLint (Next.js 16 core-web-vitals + TS)
-bun run typecheck        # tsc --noEmit (strict, noUncheckedIndexedAccess)
-bun test                 # unit tests + gated Supabase RLS integration suite (skips if no project linked)
-bun run dev              # start the dev server on http://localhost:3000
+cp .env.example .env.local          # fill in; every variable is documented there
+bun run dev                          # http://localhost:3000
+stripe listen --forward-to localhost:3000/api/stripe/webhook   # copy whsec_ into .env.local
 ```
 
-The **only user-visible route** is `/` (the Step 1 placeholder home page).
-
-## Scripts
-
-| Script | Purpose |
+| Script | What it does |
 | --- | --- |
-| `bun run dev` | Start the Next.js dev server (port 3000) |
-| `bun run lint` | ESLint |
-| `bun run typecheck` | `tsc --noEmit` across the whole project |
-| `bun test` | Run all tests (bun test runner) |
-| `bun run test:db` | Run the gated Supabase RLS integration suite |
-| `bun run db:reset` | `supabase db reset` (applies migrations) |
-| `bun run db:types` | `supabase gen types --typescript --local` |
-| `bun run build` | Production build (see "Blockers") |
+| `bun run dev` / `build` / `start` | Next.js dev server / production build / serve the build |
+| `bun run typecheck` | `tsc --noEmit` (strict, `noUncheckedIndexedAccess`) |
+| `bun run lint` | ESLint (Next core-web-vitals + TypeScript rules) |
+| `bun test` | Unit tests; the Supabase RLS suite runs when Supabase env is set |
+| `supabase db test` | pgTAP security-matrix + catalog tests (needs `supabase start`) |
 
-## Database TypeScript types
+## Database
 
-`src/types/database.ts` is a hand-authored `Database` type that mirrors the SQL
-migrations, so the app builds without a live Supabase project. Once a project
-is linked, regenerate from the live DB and prefer the generated file:
+All schema lives in `supabase/migrations/` (apply in order; never edit the database by hand). Regenerate types after a migration: `supabase gen types typescript --project-id <ref> > src/types/database.generated.ts`.
 
-```bash
-bun run db:types   # writes types to stdout; redirect to src/types/database.generated.ts
-```
+Access model (every table has RLS enabled):
 
-The data-access layer (`src/features/catalog/data-access.ts`) derives its
-public row shapes from the `Database` type.
+| Data | Anonymous | Signed-in non-admin | Admin (active + AAL2) | Server (secret key) |
+| --- | --- | --- | --- | --- |
+| Published, rights-cleared products, media, taxonomy | read | read | read/write | — |
+| Drafts, deliverables, rights evidence, uploads | none | none | read/write | read |
+| Orders, entitlements, emails, webhooks, refunds | none | none | **read only** | read/write |
+| Carts, access tokens, sessions, rate limits | none | none | none | read/write |
+| `mark_order_paid`, `revoke_fulfillment`, `rate_limit_hit` | none | none | none | execute |
 
-## Local catalog seed & media (Step 3)
+Admins change orders only through audited Server Actions (refund, resend, restore/revoke access), never by direct table writes.
 
-`supabase db reset` applies all migrations AND `supabase/seed.sql` — a
-deterministic fictional dataset (allow/deny rows, genres, plugins, public
-cover/audio references, private deliverables). It is dev/test-only and never
-runs against production. Local media seeding (a tiny synthetic 1-second
-audio clip + original abstract SVG covers, generated in-process — no large
-binaries committed) would be done via `bun scripts/seed-local-media.ts`
-(documented; not required for the schema). With no linked project, catalog
-pages render an honest "not available here" state.
+## Deployment
 
-## Linking a future hosted Supabase project (DO NOT commit secrets)
+See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for the step-by-step Supabase → Stripe → Resend → Vercel → domain runbook and the launch checklist.
 
-1. Create a Supabase project; enable the current `sb_publishable_...` /
-   `sb_secret_...` key model.
-2. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
-   `SUPABASE_URL`, `SUPABASE_SECRET_KEY` in `.env.local` (git-ignored).
-3. Apply the SQL in `supabase/migrations/*.sql` to the hosted project.
-4. Run the pgTAP tests in `supabase/tests/` against the hosted DB.
-5. Provision an admin allow-list row manually; enforce TOTP MFA/AAL2 before
-   accepting live orders.
+## Legal
 
-## Deploying to Vercel (later — NOT part of Step 1)
-
-Vercel deployment is **Step 9** and is explicitly not implemented here. When it
-is, set the matching environment variables in the Vercel project, select the
-Supabase region, and configure the domain/DNS/TLS. Do not treat this README as
-a deployment guide until Step 9 lands.
-
-## Blockers (honest)
-
-- **Production build (`bun run build`)** is intentionally not run in this
-  sandbox per environment rules. Verified instead via `bun run lint`,
-  `bun run typecheck`, `bun test`, and a clean dev-server boot of `/`.
-- **Supabase migrations / pgTAP / real RLS** cannot run here (no Supabase CLI /
-  Docker in the sandbox). The committed SQL (`supabase/migrations/`) is the
-  source of truth for production; the access-matrix deny rules are also
-  exercised by a gated JS integration suite (`tests/catalog/supabase-access.test.ts`)
-  that runs automatically once a project is linked, and by the pgTAP suite in
-  `supabase/tests/` (run with `supabase db test`).
-
-## Storefront routes (Step 2)
-
-The shell renders these public routes (all are presentation shells; live catalog
-data, checkout, and delivery arrive in later steps):
-
-| Route | Purpose |
-| --- | --- |
-| `/` | Complete home page (hero, trust strip, product-type discovery, featured, transparency, originality, free teaser, FAQ preview) |
-| `/catalog` | Catalog shell using typed fixtures (no non-working filter widgets) |
-| `/free` | Free-download discovery shell (no fake download action) |
-| `/cart` | Polished empty-cart state only |
-| `/about` | Mission + originality statement |
-| `/faq` | Buyer questions (file types, compatibility, licensing, delivery) |
-| `/contact` | Support guidance (placeholder address; no non-functional form) |
-| `/legal/{license,refunds,privacy,terms}` | Draft legal structure pages (`noindex` until approved) |
-| `not-found` | Branded 404 |
-| `error` / `loading` | Route-level error boundary + global loading skeleton |
-
-## Documentation
-
-- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — end-state topology, data
-  boundaries, caching strategy, why large uploads bypass Vercel Functions.
-- [`docs/SECURITY.md`](./docs/SECURITY.md) — assets, actors, trust boundaries,
-  threats, controls, secret handling, RLS rules, future payment/download
-  requirements.
-- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — Steps 2–9 (Steps 1–3 complete; 4–9 pending).
-- [`docs/DESIGN_SYSTEM.md`](./docs/DESIGN_SYSTEM.md) — Step 2 visual principles,
-  palette/tokens, typography, components, state behavior, responsive & a11y rules.
-- [`docs/CONTENT_GUIDE.md`](./docs/CONTENT_GUIDE.md) — Step 2 voice, terminology,
-  product naming, prohibited claims, third-party DAW reference rules.
-- [`docs/CATALOG_AND_SEARCH.md`](./docs/CATALOG_AND_SEARCH.md) — Step 3 catalog
-  data layer, URL contract, search/ranking, filters, sorting, pagination,
-  currency rule, SQL functions/indexes, caching/invalidation, empty/error behavior.
-- [`docs/MEDIA_PREVIEWS.md`](./docs/MEDIA_PREVIEWS.md) — Step 3 public/private
-  media boundary, preview types, loading policy, player behavior, encoding, a11y.
-- [`docs/SEO.md`](./docs/SEO.md) — Step 3 canonical/indexing, metadata,
-  sitemap/robots, JSON-LD truthfulness/escaping, validation, no-fake-ratings rule.
-- [`docs/FULFILLMENT.md`](./docs/FULFILLMENT.md) — Step 6 paid-to-fulfillment transition, entitlement state, outbox worker, recovery, refunds/disputes.
-- [`docs/DOWNLOAD_SECURITY.md`](./docs/DOWNLOAD_SECURITY.md) — Step 6 token crypto, fragment exchange, private Storage, signed-URL TTL/quota, headers/CSP.
-- [`docs/EMAIL_DELIVERY.md`](./docs/EMAIL_DELIVERY.md) — Step 6 Resend adapter, immutable payload, webhooks, bounce/suppression, latency, DNS.
-- [`docs/RECOVERY.md`](./docs/RECOVERY.md) — Step 6 guest order-number/email recovery, token reuse/rotation, admin email correction.
-- [`docs/DECISIONS.md`](./docs/DECISIONS.md) — decision record (hosted Stripe
-  Checkout, guest checkout, private Supabase delivery storage, webhook-authoritative
-  fulfillment).
-
-## Legal note
-
-This store will only sell products the owner has the legal right to distribute.
-The database enforces a rights status and refuses publication until a product is
-marked `original` or `licensed`. This is an engineering guardrail, not legal
-advice; verify business registration, payment-processor eligibility, tax/VAT,
-consumer-contract, privacy, copyright, trademark, licensing, refund, and
-digital-withdrawal obligations for the operating jurisdiction before live orders.
+The store only publishes products marked `original` or `licensed` with a recorded rights review; the database refuses anything else. Legal pages under `/legal/*` are drafts marked `[Draft]`: have them reviewed for your jurisdiction before taking live payments.

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import {
   ADMIN_LOGIN_PATH,
@@ -48,7 +49,15 @@ export interface AuthFailure {
 }
 export type AuthOutcome = AuthSuccess | AuthFailure;
 
-export async function requireAdmin(opts: {
+// The layout and each page both guard; cache() (keyed on the boolean, since
+// object arguments never dedupe) makes that one verification per request.
+const checkAdminCached = cache((aal2: boolean) => checkAdmin({ aal2 }));
+
+export async function requireAdmin(opts: { aal2: boolean }): Promise<AuthOutcome> {
+  return checkAdminCached(opts.aal2);
+}
+
+async function checkAdmin(opts: {
   aal2: boolean;
 }): Promise<AuthOutcome> {
   let client;

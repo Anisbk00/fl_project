@@ -1,18 +1,15 @@
 /**
  * Price formatting built on Intl.NumberFormat (never string concatenation).
- * Prices are stored/flowed as INTEGER minor currency units (cents) per the
- * catalog contract; the formatter divides by 100 and renders per locale.
- *
- * JPY-style zero-decimal currencies are handled by Intl automatically
- * (minor/100 is still correct for zero-decimal currencies because their
- * "minor unit" is the same as the major unit — the catalog stores yen as
- * the integer yen value, which is what /100 yields).
+ * Prices are stored/flowed as INTEGER minor currency units (Stripe's
+ * convention). Zero-decimal currencies (JPY, KRW, …) have no minor unit:
+ * 1500 means ¥1500, so they must NOT be divided by 100 — otherwise the page
+ * would show ¥15 while Stripe charges ¥1500.
  */
 
 import { cn } from "@/lib/utils";
+import { isZeroDecimalCurrency } from "@/features/payments/money";
 
 const SUPPORTED_LOCALES = ["en-US", "en-GB", "de-DE", "fr-FR", "ja-JP"] as const;
-type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 function normalizeLocale(locale?: string): string {
   if (locale && (SUPPORTED_LOCALES as readonly string[]).includes(locale)) {
@@ -39,15 +36,16 @@ export function formatPrice(
   if (!/^[A-Z]{3}$/.test(code)) {
     return "—";
   }
+  const major = isZeroDecimalCurrency(code) ? minorUnits : minorUnits / 100;
   try {
     return new Intl.NumberFormat(normalizeLocale(locale), {
       style: "currency",
       currency: code,
       currencyDisplay: "narrowSymbol",
-    }).format(minorUnits / 100);
+    }).format(major);
   } catch {
     // Unsupported currency code — degrade gracefully rather than throw.
-    return `${(minorUnits / 100).toFixed(2)} ${code}`;
+    return `${major} ${code}`;
   }
 }
 

@@ -83,8 +83,8 @@ export function AudioPreview({
 
   // Cleanup on unmount: stop + release.
   useEffect(() => {
+    const el = audioRef.current;
     return () => {
-      const el = audioRef.current;
       if (el) {
         el.pause();
         el.src = "";

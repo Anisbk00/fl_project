@@ -1,5 +1,4 @@
 import { publicEnv } from "@/lib/env/public";
-import { siteConfig } from "@/lib/site-config";
 import { PRODUCT_TYPE_LABELS, type ProductDetailVM } from "./view-models";
 
 /**

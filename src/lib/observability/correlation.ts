@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 /**
  * Correlation ID (Step 8). Random, non-secret, never provides authorization.

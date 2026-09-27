@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
 import { publicEnv } from "@/lib/env/public";
 import { siteConfig } from "@/lib/site-config";
 
@@ -63,7 +62,6 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} bg-canvas text-ink antialiased`}
       >
         {children}
-        <Toaster />
       </body>
     </html>
   );

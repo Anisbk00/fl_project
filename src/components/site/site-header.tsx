@@ -9,20 +9,13 @@ import { siteConfig } from "@/lib/site-config";
 
 /**
  * Global site header (Server Component). Contains the brand mark + wordmark,
- * desktop navigation, a cart link (always 0 items in Step 2 → empty-cart
- * shell), and the accessible mobile menu. No customer sign-in/account link.
+ * desktop navigation, a cart link (no item count: a count would make every
+ * page per-visitor dynamic and uncacheable), and the accessible mobile menu. No customer sign-in/account link.
  * The future admin entry point is deliberately private/unadvertised.
  */
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-[var(--z-header)] border-b border-line bg-canvas/85 backdrop-blur supports-[backdrop-filter]:bg-canvas/70">
-      {siteConfig.announcement ? (
-        <div className="border-b border-line bg-surface-inset">
-          <p className="container-shell t-caption py-1.5 text-center text-ink-secondary">
-            {siteConfig.announcement}
-          </p>
-        </div>
-      ) : null}
       <Container
         as="div"
         className="flex h-16 items-center justify-between gap-4"
@@ -53,12 +46,9 @@ export function SiteHeader() {
             href="/cart"
             variant="ghost"
             className="relative"
-            aria-label={`Cart, 0 items`}
+            aria-label="Cart"
           >
             <ShoppingCart className="h-5 w-5" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold leading-none text-brand-foreground">
-              0
-            </span>
           </IconButton>
           <MobileNav />
         </div>

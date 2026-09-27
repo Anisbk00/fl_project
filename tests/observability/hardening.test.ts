@@ -12,7 +12,7 @@ import {
   sanitizeLogValue,
 } from "@/lib/observability/redaction";
 import { log, logInfo, logError } from "@/lib/observability/logger";
-import { buildPublicCsp, buildSensitiveCsp, buildWebhookCsp } from "@/lib/security/csp";
+import { buildCsp } from "@/lib/security/headers";
 import { SLO_CATALOG, TELEMETRY_EVENT_NAMES } from "@/lib/observability/slo-catalog";
 import { ABUSE_MATRIX, PERF_BUDGETS } from "@/lib/security/abuse-matrix";
 
@@ -100,30 +100,24 @@ describe("logger (non-fatal, bounded, redacted)", () => {
   });
 });
 
-describe("CSP builders", () => {
-  it("public CSP has strict baseline (default-src none, object-src none)", () => {
-    const csp = buildPublicCsp();
-    expect(csp).toContain("default-src 'none'");
-    expect(csp).toContain("object-src 'none'");
-    expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).toContain("base-uri 'none'");
-    expect(csp).not.toContain("unsafe-eval");
+describe("CSP", () => {
+  const prod = buildCsp({ supabaseUrl: "https://abc.supabase.co", dev: false });
+  it("blocks framing, plugins and base-tag hijacking", () => {
+    expect(prod).toContain("frame-ancestors 'none'");
+    expect(prod).toContain("object-src 'none'");
+    expect(prod).toContain("base-uri 'self'");
   });
-  it("sensitive CSP is stricter (no media-src, no worker-src)", () => {
-    const csp = buildSensitiveCsp();
-    expect(csp).toContain("media-src 'none'");
-    expect(csp).toContain("worker-src 'none'");
-    expect(csp).toContain("frame-src 'none'");
+  it("never allows eval in production", () => {
+    expect(prod).not.toContain("unsafe-eval");
   });
-  it("webhook CSP denies everything", () => {
-    const csp = buildWebhookCsp();
-    expect(csp).toContain("script-src 'none'");
-    expect(csp).toContain("style-src 'none'");
-    expect(csp).toContain("img-src 'none'");
+  it("allows the form redirects the purchase flow needs (Stripe + signed downloads)", () => {
+    expect(prod).toMatch(/form-action 'self' https:\/\/checkout\.stripe\.com https:\/\/abc\.supabase\.co/);
   });
-  it("public CSP with nonce includes the nonce in script-src", () => {
-    const csp = buildPublicCsp("abc123");
-    expect(csp).toContain("'nonce-abc123'");
+  it("lets the admin talk to Supabase and nothing else cross-origin", () => {
+    expect(prod).toContain("connect-src 'self' https://abc.supabase.co;");
+  });
+  it("omits empty origins when Supabase is not configured", () => {
+    expect(buildCsp({ supabaseUrl: "", dev: false })).toContain("connect-src 'self';");
   });
 });
 

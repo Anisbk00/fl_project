@@ -1,6 +1,4 @@
 import { Container, Section } from "@/components/site/container";
-import { SkeletonCard } from "@/components/site/state";
-import { Grid } from "@/components/site/container";
 
 export default function Loading() {
   return (

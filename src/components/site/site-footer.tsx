@@ -57,12 +57,7 @@ export function SiteFooter() {
 
         <div className="mt-10 flex flex-col gap-2 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="t-caption text-ink-muted">
-            © {new Date().getFullYear()} {siteConfig.name}. Brand name is a
-            working label pending approval.
-          </p>
-          <p className="t-caption text-ink-muted">
-            Storefront shell · Step 2 of 9 — live catalog, checkout & delivery
-            arrive in later steps.
+            © {new Date().getFullYear()} {siteConfig.name}
           </p>
         </div>
       </Container>

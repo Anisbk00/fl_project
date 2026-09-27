@@ -21,7 +21,6 @@ import {
   EXTENSION_ALLOWLISTS,
   MAX_BYTES,
   MIME_ALLOWLISTS,
-  SIGNATURE_ALLOWLISTS,
   detectFileSignature,
   exceedsSize,
   extensionOf,
@@ -31,7 +30,6 @@ import {
   type AssetRole,
 } from "@/features/admin/uploads";
 import {
-  computeSha256Hex,
   formatBytes,
   readFileHead,
   uploadToStorage,
@@ -66,7 +64,6 @@ export interface MediaRow {
 
 interface MediaManagerProps {
   productId: string;
-  slug: string;
   initialMedia: MediaRow[];
 }
 
@@ -150,12 +147,10 @@ const INITIAL_SUBSTATE: SubsectionState = {
 function MediaSubsection({
   kind,
   productId,
-  slug,
   rows,
 }: {
   kind: MediaKind;
   productId: string;
-  slug: string;
   rows: MediaRow[];
 }) {
   const cfg = KIND_CONFIG[kind];
@@ -246,7 +241,7 @@ function MediaSubsection({
 
     // 3) Upload to Storage via XHR (real progress).
     const ext = v.extension ?? extensionOf(file.name);
-    const storageObjectPath = `products/${slug}/${kind}-${crypto.randomUUID()}.${ext}`;
+    const storageObjectPath = `products/${productId}/${kind}-${crypto.randomUUID()}.${ext}`;
     const mimeType =
       v.mimeType && MIME_ALLOWLISTS[cfg.role].includes(v.mimeType)
         ? v.mimeType
@@ -615,9 +610,9 @@ function MediaRowCard({
       {/* Thumbnail / preview */}
       <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-canvas">
         {kind === "cover_image" && cdnUrl ? (
-          // Use plain <img> — covers may be external URLs (data URIs, CDN)
-          // that Next/Image can't reliably optimize in this restricted
-          // sandbox. The lint rule allows it for arbitrary URLs.
+          // Admin-only 80px thumbnail of a possibly external https URL that is
+          // outside next/image remotePatterns; optimization isn't worth it here.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={cdnUrl}
             alt={row.altText ?? ""}
@@ -750,12 +745,11 @@ function primaryMimeForRole(role: AssetRole): string {
 /**
  * MediaManager renders the 3 media subsections (cover, audio, video) with
  * upload widgets + existing-rows lists. The parent (product edit page)
- * server-renders this with `initialMedia` and passes the product `slug` so
+ * server-renders this with `initialMedia` and passes the product id so
  * the client can construct canonical Storage paths.
  */
 export function MediaManager({
   productId,
-  slug,
   initialMedia,
 }: MediaManagerProps) {
   // Group by kind once on mount. After mutations, the server revalidates the
@@ -793,19 +787,16 @@ export function MediaManager({
         <MediaSubsection
           kind="cover_image"
           productId={productId}
-          slug={slug}
           rows={grouped.cover_image ?? []}
         />
         <MediaSubsection
           kind="audio_preview"
           productId={productId}
-          slug={slug}
           rows={grouped.audio_preview ?? []}
         />
         <MediaSubsection
           kind="video_preview"
           productId={productId}
-          slug={slug}
           rows={grouped.video_preview ?? []}
         />
       </div>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireAdminOrRedirect } from "@/lib/auth/require-admin";
 import { Container } from "@/components/site/container";
 import { SectionHeading } from "@/components/site/section-heading";
 import { ErrorState } from "@/components/site/state";
@@ -20,6 +21,7 @@ interface AdminRow {
 }
 
 export default async function SecurityPage() {
+  await requireAdminOrRedirect({ aal2: true });
   let email: string | null = null;
   let uid: string | null = null;
   let displayName: string | null = null;

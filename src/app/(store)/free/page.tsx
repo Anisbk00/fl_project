@@ -60,7 +60,7 @@ export default async function FreePage() {
             eyebrow="Free"
             title="Free downloads"
             as="h1"
-            description="Free original sample packs. No account is required to browse. Free secure delivery arrives in a later step — there is no download button until it works."
+            description="Free original sample packs. No account needed — add one to your cart, check out with just your email, and we send the download link."
           />
         </Container>
       </Section>

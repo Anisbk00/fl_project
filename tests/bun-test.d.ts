@@ -35,7 +35,7 @@ declare module "bun:test" {
     readonly not: ExpectMatchers<T>;
   }
 
-  interface ExpectPromise<T> {
+  interface ExpectPromise<_T> {
     toThrow(expected?: unknown): Promise<void>;
     toBe(expected: unknown): Promise<void>;
     toEqual(expected: unknown): Promise<void>;

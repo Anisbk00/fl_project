@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireAdminOrRedirect } from "@/lib/auth/require-admin";
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ADMIN_NEW_PRODUCT_PATH } from "@/lib/admin-path";
@@ -109,6 +110,7 @@ function relativeTime(iso: string): string {
 }
 
 export default async function AdminProductsPage() {
+  await requireAdminOrRedirect({ aal2: true });
   const result = await listProducts();
 
   return (

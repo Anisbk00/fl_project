@@ -117,6 +117,7 @@ export function MfaEnrollForm({ configured }: { configured: boolean }) {
   return (
     <form onSubmit={verify} className="flex flex-col gap-4">
       {qr ? (
+        // eslint-disable-next-line @next/next/no-img-element -- data: URL QR code; nothing to optimize
         <img src={qr} alt="TOTP enrollment QR code" className="h-44 w-44 self-center rounded border border-line" />
       ) : (
         <p className="t-caption text-ink-muted">Rendering QR…</p>

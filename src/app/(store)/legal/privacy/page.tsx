@@ -12,9 +12,10 @@ export default function PrivacyPage() {
       </p>
       <h2>What is processed</h2>
       <ul>
-        <li>A delivery email, collected via Stripe-hosted Checkout.</li>
-        <li>Order and access records needed to grant and revoke downloads.</li>
-        <li>Aggregated, privacy-aware analytics (configured later).</li>
+        <li>Your email address, collected by Stripe-hosted Checkout, used to deliver your download link (sent through our email provider, Resend).</li>
+        <li>Order and download-access records needed to grant, limit and revoke downloads.</li>
+        <li>A one-way hash of your IP address, kept for up to a day, to rate-limit checkout and download requests against abuse.</li>
+        <li>Strictly necessary cookies only: a cart cookie (30 days) and a download-session cookie (30 minutes). No analytics or advertising cookies are used.</li>
       </ul>
       <h2>Payment data</h2>
       <p>

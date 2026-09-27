@@ -59,7 +59,7 @@ export function isCatalogReady(): boolean {
 function client() {
   try {
     return getPublishableClient();
-  } catch (e) {
+  } catch {
     throw new CatalogUnavailableError(
       "Catalog is unavailable — Supabase is not linked in this environment.",
     );
@@ -211,6 +211,7 @@ export function mapDetail(row: DetailRow): ProductDetailVM {
   const cover = media.find((m) => m.kind === "cover_image");
   const audio = media.find((m) => m.kind === "audio_preview");
   return {
+    id: row.id,
     slug: row.slug,
     title: row.title,
     shortDescription: row.short_description,
@@ -259,16 +260,16 @@ const getProductDetailUncached = async (slug: string): Promise<ProductDetailVM |
   const c = client();
   const { data, error } = await c.rpc("get_product_by_slug", { p_slug: slug });
   if (error) throw new Error(`Product lookup failed: ${error.message}`);
-  const rows = (data ?? []) as DetailRow[];
+  const rows = (data ?? []) as unknown as DetailRow[];
   const row = rows[0];
   return row ? mapDetail(row) : null;
 };
 
 const listFreeUncached = async (): Promise<ProductCardVM[]> => {
   const c = client();
-  const { data, error } = await c.rpc("list_free_products", {});
+  const { data, error } = await c.rpc("list_free_products");
   if (error) throw new Error(`Free listing failed: ${error.message}`);
-  return ((data ?? []) as CardRow[]).map(mapCard);
+  return ((data ?? []) as unknown as CardRow[]).map(mapCard);
 };
 
 const listFeaturedUncached = async (limit: number): Promise<ProductCardVM[]> => {
@@ -288,7 +289,7 @@ const listFeaturedUncached = async (limit: number): Promise<ProductCardVM[]> => 
     p_page_size: Math.min(Math.max(limit, 1), PAGE_SIZE),
   } satisfies CatalogRpcParams);
   if (error) throw new Error(`Featured listing failed: ${error.message}`);
-  return ((data ?? []) as SearchRow[]).slice(0, limit).map(mapCard);
+  return ((data ?? []) as unknown as SearchRow[]).slice(0, limit).map(mapCard);
 };
 
 const getRelatedUncached = async (
@@ -301,7 +302,7 @@ const getRelatedUncached = async (
     p_limit: limit,
   });
   if (error) throw new Error(`Related listing failed: ${error.message}`);
-  return ((data ?? []) as CardRow[]).map(mapCard);
+  return ((data ?? []) as unknown as CardRow[]).map(mapCard);
 };
 
 // Wrapped (cached) versions with stable tags.
@@ -363,7 +364,7 @@ export async function searchCatalog(
   const rpcParams = toRpcParams(params);
   const { data, error } = await c.rpc("search_products", rpcParams);
   if (error) throw new Error(`Catalog search failed: ${error.message}`);
-  const rows = (data ?? []) as SearchRow[];
+  const rows = (data ?? []) as unknown as SearchRow[];
   const total = rows[0]?.total_count ?? 0;
   return {
     products: rows.map(mapCard),

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireAdminOrRedirect } from "@/lib/auth/require-admin";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Container } from "@/components/site/container";
@@ -64,6 +65,7 @@ export default async function ProductPreviewPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdminOrRedirect({ aal2: true });
   const { id } = await params;
 
   let product: ProductRow | null = null;

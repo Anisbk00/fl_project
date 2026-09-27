@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { AdminNav } from "@/components/admin/admin-nav";
 import { redirect } from "next/navigation";
 import { ADMIN_LOGIN_PATH } from "@/lib/admin-path";
 import { requireAdmin } from "@/lib/auth/require-admin";
@@ -32,15 +32,10 @@ export default async function ProtectedAdminLayout({
   const outcome = await requireAdmin({ aal2: true });
 
   if (outcome.ok) {
-    // Set no-store headers on protected responses.
-    const h = await headers();
-    void h;
-
+    // Private, per-admin content: never cacheable (see also force-dynamic).
     return (
-      <Container as="main" className="py-8">
-        <p className="t-caption text-ink-muted mb-4">
-          Signed in as admin · AAL2 verified · {outcome.principal.uid.slice(0, 8)}…
-        </p>
+      <Container as="main" className="py-6">
+        <AdminNav />
         {children}
       </Container>
     );

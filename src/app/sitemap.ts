@@ -11,6 +11,9 @@ import type { CatalogParams } from "@/features/catalog/url-params";
  * truthful `published_at`. With no live Supabase project linked, only the
  * static canonical routes are emitted.
  */
+// Re-generate hourly so newly published products appear without a redeploy.
+export const revalidate = 3600;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
   const now = new Date();

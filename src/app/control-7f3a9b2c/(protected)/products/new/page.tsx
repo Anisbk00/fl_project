@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireAdminOrRedirect } from "@/lib/auth/require-admin";
 import { ADMIN_PRODUCTS_PATH } from "@/lib/admin-path";
 import { getServerClient } from "@/lib/supabase/server-client";
 import { Container } from "@/components/site/container";
@@ -61,6 +62,7 @@ async function getTaxonomy(): Promise<{
 }
 
 export default async function NewProductPage() {
+  await requireAdminOrRedirect({ aal2: true });
   const tax = await getTaxonomy();
 
   // If Supabase isn't linked, show the honest error rather than a "loads from

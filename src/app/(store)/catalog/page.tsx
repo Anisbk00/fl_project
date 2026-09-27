@@ -4,8 +4,8 @@ import type { Metadata } from "next";
 import { Container, Section, Grid } from "@/components/site/container";
 import { SectionHeading } from "@/components/site/section-heading";
 import { ProductCard } from "@/components/site/product-card";
-import { CatalogFilters, SortPills } from "@/components/site/catalog-filters";
-import { EmptyState, NoResultsState, SkeletonGrid } from "@/components/site/state";
+import { CatalogFilters } from "@/components/site/catalog-filters";
+import { EmptyState, NoResultsState } from "@/components/site/state";
 import { LinkButton } from "@/components/site/button";
 import { Badge } from "@/components/site/badge";
 import {
@@ -17,7 +17,6 @@ import {
 } from "@/features/catalog/repository";
 import {
   parseCatalogParams,
-  serializeCatalogParams,
   withParam,
   withPage,
   hasActiveFilters,
