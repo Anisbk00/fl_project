@@ -157,10 +157,15 @@ function MediaSubsection({
   const Icon = cfg.icon;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<SubsectionState>(INITIAL_SUBSTATE);
-  // Local mirror of the rows so deletes/toggles feel instant (the server
-  // action revalidates the page on success; if the optimistic update and
-  // the revalidation disagree, the revalidation wins on next render).
+  // Local mirror of the rows so deletes feel instant. useState only reads
+  // `rows` once, so adopt fresh server rows whenever revalidation sends them
+  // (otherwise new uploads wouldn't appear until a full reload).
   const [localRows, setLocalRows] = useState<MediaRow[]>(rows);
+  const [prevRows, setPrevRows] = useState(rows);
+  if (rows !== prevRows) {
+    setPrevRows(rows);
+    setLocalRows(rows);
+  }
 
   function reset() {
     setState(INITIAL_SUBSTATE);
@@ -752,8 +757,8 @@ export function MediaManager({
   productId,
   initialMedia,
 }: MediaManagerProps) {
-  // Group by kind once on mount. After mutations, the server revalidates the
-  // whole page (re-mounting this component with fresh `initialMedia`).
+  // Group by kind. After mutations the server revalidates the page and sends
+  // fresh `initialMedia`; each subsection adopts its new rows.
   const grouped: Record<MediaKind, MediaRow[]> = {
     cover_image: [],
     audio_preview: [],

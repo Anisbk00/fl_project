@@ -140,6 +140,13 @@ export function DeliverableManager({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<UploadState>(INITIAL_STATE);
   const [rows, setRows] = useState<DeliverableRow[]>(initialDeliverables);
+  // useState only reads the initial value once: adopt fresh server rows after
+  // revalidation so a new upload appears without a reload.
+  const [prevInitial, setPrevInitial] = useState(initialDeliverables);
+  if (initialDeliverables !== prevInitial) {
+    setPrevInitial(initialDeliverables);
+    setRows(initialDeliverables);
+  }
 
   // The next version number for a NEW upload = max(existing versions) + 1.
   // The server action revalidates the path's version segment — if two
