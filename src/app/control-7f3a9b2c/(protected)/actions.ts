@@ -368,61 +368,29 @@ export async function archiveProductAction(
 }
 
 // ---------------------------------------------------------------------------
-// deleteProductAction — permanent delete of a never-sold product.
-//
-// order_items / fulfillment rows reference deliverables WITHOUT foreign keys,
-// and deliverables cascade with the product — so deleting a sold product would
-// silently destroy files buyers paid for. Sold products must be archived.
-// Media/deliverable/taxonomy rows cascade; the products_audit trigger records
-// the delete.
+// deleteProductAction — permanent delete of a never-sold product via the
+// transactional delete_product RPC (migration 0018), which refuses sold,
+// published, or mid-checkout products and purges only dead checkout attempts.
 // ---------------------------------------------------------------------------
+
+const DELETE_ERRORS: Record<string, string> = {
+  unauthorized: "Unauthorized — AAL2 required.",
+  not_found: "The product no longer exists.",
+  conflict: "Someone else edited this product. Reload the page and try again.",
+  published: "Unpublish or archive this product before deleting it.",
+  sold: "This product has been purchased, so it can't be deleted — buyers still need its files. Archive it instead.",
+  open_checkout:
+    "Someone is checking out with this product right now. Try again once the checkout finishes or expires (within 24 hours).",
+};
 
 export async function deleteProductAction(
   productId: string,
   expectedVersion: number,
 ): Promise<ActionResult> {
   const outcome = await requireAdminOrFailure({ aal2: true });
-  if (!outcome.ok) {
-    return { ok: false, message: "Unauthorized — AAL2 required." };
-  }
+  if (!outcome.ok) return { ok: false, message: DELETE_ERRORS.unauthorized };
 
   const client = await adminClient();
-  const { data: product, error: loadErr } = await client
-    .from("products")
-    .select("id,lifecycle,row_version")
-    .eq("id", productId)
-    .maybeSingle();
-  if (loadErr) return { ok: false, message: friendlyPostgresError(loadErr, "load the product") };
-  if (!product) return { ok: false, message: "The product no longer exists." };
-  if (product.row_version !== expectedVersion) {
-    return { ok: false, message: "Someone else edited this product. Reload the page and try again." };
-  }
-
-  const [sold, openCheckouts] = await Promise.all([
-    client.from("order_items").select("order_id", { count: "exact", head: true }).eq("product_id", productId),
-    client
-      .from("checkout_attempt_items")
-      .select("checkout_attempts!inner(state,expires_at)")
-      .eq("product_id", productId)
-      .in("checkout_attempts.state", ["creating", "open", "manual_review"]),
-  ]);
-  if (sold.error || openCheckouts.error) {
-    return { ok: false, message: "Could not verify the product's order history. Nothing was deleted." };
-  }
-  if ((sold.count ?? 0) > 0) {
-    return {
-      ok: false,
-      message: "This product has been purchased, so it can't be deleted — buyers still need its files. Archive it instead.",
-    };
-  }
-  // Expired attempts can stay "open" if Stripe's expiry event never landed, so
-  // trust expires_at too. manual_review has no expiry — it always blocks.
-  const now = Date.now();
-  const hasOpenCheckout = (openCheckouts.data ?? []).some(({ checkout_attempts: a }) =>
-    a.state === "manual_review" || new Date(a.expires_at).getTime() > now,
-  );
-  const blocker = deletionBlocker(product.lifecycle, hasOpenCheckout);
-  if (blocker) return { ok: false, message: blocker };
 
   // Collect stored files before the rows cascade away.
   const [media, deliverables] = await Promise.all([
@@ -433,15 +401,14 @@ export async function deleteProductAction(
     (f): f is { bucket: string; storage_object_path: string } => !!f.storage_object_path,
   );
 
-  const { data: deleted, error: deleteErr } = await client
-    .from("products")
-    .delete()
-    .eq("id", productId)
-    .eq("row_version", expectedVersion)
-    .select("id");
-  if (deleteErr) return { ok: false, message: friendlyPostgresError(deleteErr, "delete the product") };
-  if (!deleted?.length) {
-    return { ok: false, message: "Someone else edited this product. Reload the page and try again." };
+  const { data, error } = await client
+    .rpc("delete_product", { p_product_id: productId, p_expected_version: expectedVersion })
+    .single();
+  if (error) return { ok: false, message: `Delete call failed: ${error.message}` };
+  const result = data as { ok?: boolean; errors?: unknown } | null;
+  if (!result || result.ok !== true) {
+    const code = Array.isArray(result?.errors) ? String(result.errors[0]) : "";
+    return { ok: false, message: DELETE_ERRORS[code] ?? "The product could not be deleted." };
   }
 
   // Best-effort storage cleanup; the product is already gone, so don't fail.
@@ -452,21 +419,6 @@ export async function deleteProductAction(
 
   revalidatePath(ADMIN_PRODUCTS_PATH);
   redirect(ADMIN_PRODUCTS_PATH);
-}
-
-/**
- * Business rule: may a never-sold product be deleted in its current state?
- * Returns a message explaining why not, or null to allow the delete.
- */
-function deletionBlocker(
-  lifecycle: "draft" | "published" | "archived",
-  hasOpenCheckout: boolean,
-): string | null {
-  if (lifecycle === "published") return "Unpublish or archive this product before deleting it.";
-  if (hasOpenCheckout) {
-    return "Someone is checking out with this product right now. Try again once the checkout finishes or expires (within 24 hours).";
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------

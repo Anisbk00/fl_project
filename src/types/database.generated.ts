@@ -1452,6 +1452,13 @@ export type Database = {
           ok: boolean
         }[]
       }
+      delete_product: {
+        Args: { p_expected_version: number; p_product_id: string }
+        Returns: {
+          errors: Json
+          ok: boolean
+        }[]
+      }
       get_product_by_slug: {
         Args: { p_slug: string }
         Returns: {
