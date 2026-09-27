@@ -161,7 +161,7 @@ function ProductView({
                 <p className="t-caption text-ink-muted">No audio preview available.</p>
               )}
               {videoSrc ? (
-                <video src={videoSrc} controls preload="metadata" playsInline className="w-full rounded-xl border border-line bg-canvas" aria-label={`${product.title} video preview`} />
+                <video src={videoSrc} controls preload="metadata" playsInline className="w-full max-h-[70vh] object-contain rounded-xl border border-line bg-canvas" aria-label={`${product.title} video preview`} />
               ) : null}
             </div>
 

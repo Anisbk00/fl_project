@@ -154,7 +154,7 @@ export default async function ProductPreviewPage({
             <p className="t-caption text-ink-muted">No audio preview uploaded.</p>
           )}
           {videoSrc ? (
-            <video src={videoSrc} controls preload="metadata" playsInline className="w-full rounded-xl border border-line bg-canvas" aria-label={`${product.title} video preview`} />
+            <video src={videoSrc} controls preload="metadata" playsInline className="w-full max-h-[70vh] object-contain rounded-xl border border-line bg-canvas" aria-label={`${product.title} video preview`} />
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={lifecycleTone}>{product.lifecycle}</Badge>
